@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Subnet Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root, html.dark {
+            --bg-primary: #111827; --bg-secondary: #1f2937; --bg-tertiary: #374151;
+            --text-primary: #f9fafb; --text-secondary: #d1d5db; --border-color: #4b5563;
+            --accent-color: #3b82f6; --accent-color-hover: #2563eb;
+            --red-color: #ef4444;
+        }
+        html:not(.dark) {
+            --bg-primary: #f9fafb; --bg-secondary: #ffffff; --bg-tertiary: #f3f4f6;
+            --text-primary: #111827; --text-secondary: #374151; --border-color: #d1d5db;
+            --accent-color: #14b8a6; --accent-color-hover: #0d9488;
+        }
+        body{
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        #chat-window::-webkit-scrollbar, #vlsm-panel::-webkit-scrollbar { width: 8px; }
+        #chat-window::-webkit-scrollbar-track, #vlsm-panel::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        #chat-window::-webkit-scrollbar-thumb, #vlsm-panel::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        .tab.active { background-color: var(--accent-color); color: white; }
+        .tab:not(.active) { color: var(--text-secondary); }
+        .icon-btn:hover { background-color: var(--accent-color); color: white; }
+        .icon-btn.danger:hover { background-color: var(--red-color); }
+        .send-btn, .btn-calc { background-color: var(--accent-color); }
+        .send-btn:hover, .btn-calc:hover { background-color: var(--accent-color-hover); }
+        .btn-add:hover { background-color: #d1d5db; }
+        
+        .text-input::placeholder { color: var(--text-secondary); }
+        input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active {
+            -webkit-text-fill-color: var(--text-primary) !important;
+            -webkit-box-shadow: 0 0 0px 1000px var(--bg-secondary) inset !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+        .text-input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--accent-color-hover); }
+        
+        .chat-bubble.bot-bubble strong { color: #facc15; }
+        html:not(.dark) .chat-bubble.bot-bubble strong { color: #0d9488; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50; }
+        
+        @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        .diagram-bar > div { animation: slideIn 0.5s ease-out forwards; }
+        
+        #matrix-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 100; overflow: hidden; }
+        #matrix-canvas { display: block; }
+    </style>
+</head>
+<body class="flex items-center justify-center h-screen p-4">
+    <div class="w-full max-w-4xl h-full bg-secondary rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        
+        <header class="p-4 border-b flex items-center justify-between flex-shrink-0" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+            <div class="flex items-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center mr-4 flex-shrink-0" style="background-color: var(--accent-color);">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-primary">Network Subnet Bot</h1>
+                    <p class="text-sm text-secondary">Your advanced subnetting assistant</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                 <button id="credits-btn" class="p-2 rounded-full transition-colors bg-tertiary text-secondary icon-btn">
+                    <span>Made by...</span>
+                 </button>
+                <button id="theme-toggle" class="p-2 rounded-full transition-colors bg-tertiary text-secondary icon-btn" title="Toggle Theme"></button>
+                <button id="clear-chat-btn" class="p-2 rounded-full transition-colors bg-tertiary text-secondary icon-btn danger" title="Clear Chat">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="border-b" style="border-color: var(--border-color); background-color: rgba(55,65,81,.1);">
+            <div class="flex justify-center p-1">
+                <button id="tab-subnet" class="w-1/2 p-2 rounded-md font-semibold transition-colors tab">Subnet Calculator</button>
+                <button id="tab-vlsm" class="w-1/2 p-2 rounded-md font-semibold transition-colors tab">VLSM Calculator</button>
+            </div>
+        </div>
+        
+        <div id="subnet-panel" class="flex-grow flex flex-col overflow-hidden">
+            <div id="chat-window" class="flex-grow p-6 overflow-y-auto">
+                <div class="flex justify-start mb-4"><div class="max-w-[85%] p-4 rounded-lg text-white chat-bubble bot-bubble" style="border-top-left-radius: 0; background-color: var(--accent-color);"><p>Hello! This bot works offline once loaded. Send '?' for instructions.</p></div></div>
+            </div>
+            <div class="p-4 border-t flex-shrink-0" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                <form id="chat-form" class="flex items-center gap-3">
+                    <input type="text" id="user-input" placeholder="Ask a question or enter an IP..." autocomplete="off" class="w-full border-2 rounded-lg py-3 px-4 transition-all bg-secondary border-color text-input text-gray-900 dark:text-white">
+                    <button type="submit" class="text-white font-bold py-3 px-5 rounded-lg transition-colors send-btn">Send</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="vlsm-panel" class="flex-grow flex-col p-6 overflow-y-auto gap-4 hidden">
+            <div>
+                <label for="major-network" class="font-semibold mb-1 block text-secondary">Major Network Block (e.g., 10.0.0.0/8)</label>
+                <input type="text" id="major-network" class="w-full border-2 rounded-lg py-2 px-4 transition-all bg-tertiary border-color text-input text-gray-900 dark:text-white" placeholder="192.168.0.0/16">
+            </div>
+            <label class="font-semibold text-secondary">Required Subnets:</label>
+            <div id="subnet-requirements" class="flex flex-col gap-2"></div>
+            <div class="flex gap-4">
+                <button id="add-subnet-req" class="font-semibold py-2 px-4 rounded-lg transition-colors text-gray-800 bg-gray-200 btn-add">+ Add Requirement</button>
+                <button id="calculate-vlsm" class="font-bold py-2 px-4 rounded-lg transition-colors text-white btn-calc">Calculate VLSM</button>
+            </div>
+            <div id="vlsm-results" class="mt-4 overflow-x-auto"></div>
+        </div>
+    </div>
+    
+    <div id="credits-modal" class="modal-overlay hidden">
+        <div class="p-8 rounded-lg shadow-xl relative w-full max-w-md bg-secondary">
+            <button id="close-modal-btn" class="absolute top-2 right-2 text-2xl text-secondary hover:text-primary">&times;</button>
+            <h2 class="text-2xl font-bold mb-4 text-primary">Made by</h2>
+            <p class="text-lg text-secondary"><strong>Eng Thu-alfaqar salah</strong></p>
+            <p><a href="https://www.linkedin.com/in/thu-al-faqar-salah-31b920282/" target="_blank" class="text-blue-400 hover:underline">LinkedIn Profile</a></p>
+            <p class="text-secondary">Zu.alfaqar.salah@gmail.com</p>
+        </div>
+    </div>
+
+    <div id="matrix-overlay" class="hidden">
+        <canvas id="matrix-canvas"></canvas>
+    </div>
+
+    <script>
+        const IPTools = {
+            isValidIp(ip) { return /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip); },
+            ipToLong(ip) { return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0; },
+            longToIp(long) { return [(long >>> 24), (long >>> 16) & 255, (long >>> 8) & 255, long & 255].join('.'); },
+            cidrToSubnetMaskLong(cidr) { return (-1 << (32 - cidr)) >>> 0; },
+            subnetMaskToCidr(mask) { const long = this.ipToLong(mask); const bits = long.toString(2); if (!/^1*0*$/.test(bits)) throw new Error("Invalid subnet mask; must be contiguous."); return bits.split('1').length - 1; },
+            getClassfulCidr(ip) { const firstOctet = parseInt(ip.split('.')[0], 10); if (firstOctet >= 1 && firstOctet <= 126) return 8; if (firstOctet >= 128 && firstOctet <= 191) return 16; if (firstOctet >= 192 && firstOctet <= 223) return 24; return null; },
+            isPrivateIp(ip) { const longIp = this.ipToLong(ip); return (longIp >= this.ipToLong('10.0.0.0') && longIp <= this.ipToLong('10.255.255.255')) || (longIp >= this.ipToLong('172.16.0.0') && longIp <= this.ipToLong('172.31.255.255')) || (longIp >= this.ipToLong('192.168.0.0') && longIp <= this.ipToLong('192.168.255.255')); }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const ui = {
+                chatWindow: document.getElementById('chat-window'),
+                chatForm: document.getElementById('chat-form'),
+                userInput: document.getElementById('user-input'),
+                clearChatBtn: document.getElementById('clear-chat-btn'),
+                themeToggleBtn: document.getElementById('theme-toggle'),
+                subnetPanel: document.getElementById('subnet-panel'),
+                vlsmPanel: document.getElementById('vlsm-panel'),
+                tabSubnet: document.getElementById('tab-subnet'),
+                tabVlsm: document.getElementById('tab-vlsm'),
+                addReqBtn: document.getElementById('add-subnet-req'),
+                calcVlsmBtn: document.getElementById('calculate-vlsm'),
+                requirementsContainer: document.getElementById('subnet-requirements'),
+                vlsmResultsContainer: document.getElementById('vlsm-results'),
+                majorNetworkInput: document.getElementById('major-network'),
+                creditsBtn: document.getElementById('credits-btn'),
+                creditsModal: document.getElementById('credits-modal'),
+                closeModalBtn: document.getElementById('close-modal-btn'),
+                matrixOverlay: document.getElementById('matrix-overlay'),
+                matrixCanvas: document.getElementById('matrix-canvas'),
+                sunIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>`,
+                moonIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>`
+            };
+
+            const app = {
+                init() {
+                    this.themeManager.init();
+                    this.tabManager.init();
+                    this.chatManager.init();
+                    this.vlsmManager.init();
+                    this.modalManager.init();
+                },
+
+                modalManager: {
+                    init() { ui.creditsBtn.addEventListener('click', () => this.show()); ui.closeModalBtn.addEventListener('click', () => this.hide()); ui.creditsModal.addEventListener('click', (e) => { if (e.target === ui.creditsModal) this.hide(); }); },
+                    show() { ui.creditsModal.classList.remove('hidden'); },
+                    hide() { ui.creditsModal.classList.add('hidden'); }
+                },
+
+                themeManager: {
+                    init() { ui.themeToggleBtn.addEventListener('click', () => this.toggle()); this.apply(localStorage.getItem('theme') || 'dark'); },
+                    apply(theme) { document.documentElement.classList.toggle('dark', theme === 'dark'); ui.themeToggleBtn.innerHTML = theme === 'dark' ? ui.sunIcon : ui.moonIcon; },
+                    toggle() { const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; localStorage.setItem('theme', newTheme); this.apply(newTheme); }
+                },
+
+                tabManager: {
+                    init() { ui.tabVlsm.addEventListener('click', () => this.switchTab('vlsm')); ui.tabSubnet.addEventListener('click', () => this.switchTab('subnet')); this.updateTabStyles(); },
+                    switchTab(tab) { ui.subnetPanel.classList.toggle('hidden', tab === 'vlsm'); ui.vlsmPanel.classList.toggle('hidden', tab !== 'vlsm'); this.updateTabStyles(); },
+                    updateTabStyles() { ui.tabSubnet.classList.toggle('active', !ui.subnetPanel.classList.contains('hidden')); ui.tabVlsm.classList.toggle('active', !ui.vlsmPanel.classList.contains('hidden')); }
+                },
+                
+                chatManager: {
+                    init() { ui.chatForm.addEventListener('submit', (e) => { e.preventDefault(); this.handleUserInput(); }); ui.clearChatBtn.addEventListener('click', () => this.clear()); },
+                    handleUserInput() { const message = ui.userInput.value.trim(); if (message) { this.appendMessage(message, 'user'); this.processRequest(message); ui.userInput.value = ''; } },
+                    processRequest(input) {
+                        const lowerInput = input.toLowerCase();
+                        if (lowerInput === '?') { this.showHelp(); return; }
+                        if (lowerInput === 'hello') { setTimeout(() => this.appendMessage('Hello Mr engineer, how can I serve you?', 'bot'), 300); return; }
+                        if (lowerInput.includes('who') && lowerInput.includes('daddy')) { setTimeout(() => this.appendMessage('Fuqarrrrrr :)', 'bot'), 300); return; }
+                        
+                        if (lowerInput === 'flip a coin') { const result = Math.random() < 0.5 ? 'Heads' : 'Tails'; setTimeout(() => this.appendMessage(`I flipped a coin for you... it's <strong>${result}</strong>!`, 'bot'), 300); return; }
+                        if (lowerInput.includes('joke')) { const jokes = ["Why do IPv6 packets get so emotional? Because they have so many feelings.", "I tried to come up with a UDP joke, but I don't know if you'd get it.", "What's a router's favorite song? Never Gonna Give You Up, because it never lets a packet down."]; const joke = jokes[Math.floor(Math.random() * jokes.length)]; setTimeout(() => this.appendMessage(joke, 'bot'), 300); return; }
+                        if (lowerInput === 'show matrix') { app.matrixManager.start(); return; }
+
+                        try {
+                            const details = this.parseIpInput(input);
+                            let response;
+                            if (lowerInput.includes('wildcard')) response = `The wildcard mask for ${details.ipAddress}/${details.cidr} is <strong>${details.wildcardMask}</strong>.`;
+                            else if (lowerInput.includes('subnet') || lowerInput.includes('netmask')) response = `The subnet mask for ${details.ipAddress}/${details.cidr} is <strong>${details.subnetMask} /${details.cidr}</strong>.`;
+                            else if (lowerInput.includes('how many') || lowerInput.includes('usable host')) response = `The network ${details.networkAddress}/${details.cidr} provides <strong>${details.usableHosts.toLocaleString()}</strong> usable host addresses.`;
+                            else if (lowerInput.includes('host range')) response = `The usable host range is <strong>${details.hostRange}</strong>.`;
+                            else if (lowerInput.includes('private') || lowerInput.includes('public')) response = `The IP address ${details.ipAddress} is a <strong>${details.ipType}</strong> address.`;
+                            else if (lowerInput.includes('network address')) response = `The Network Address is <strong>${details.networkAddress}</strong>.`;
+                            else if (lowerInput.includes('broadcast')) response = `The Broadcast Address is <strong>${details.broadcastAddress}</strong>.`;
+                            else response = this.formatFullResponse(details);
+                            setTimeout(() => this.appendMessage(response, 'bot'), 300);
+                        } catch (error) { setTimeout(() => this.appendMessage(`I couldn't parse that. Please provide a valid IP and subnet. Error: ${error.message}`, 'bot'), 300); }
+                    },
+                    showHelp() { const instructions = `<strong>Subnet Calculator:</strong><ul class="list-disc pl-5 mt-2"><li>Ask specific questions like "wildcard for 192.168.1.1/24"</li><li>Enter an IP and subnet (e.g., 10.0.0.5 255.255.0.0) for a full breakdown.</li></ul><strong>VLSM Calculator:</strong><ul class="list-disc pl-5 mt-2"><li>Enter a major network block (e.g., 10.10.0.0/16).</li><li>Add rows for each required subnet size.</li><li>Click "Calculate VLSM".</li></ul>`; setTimeout(() => this.appendMessage(instructions, 'bot'), 300); },
+                    parseIpInput(input) {
+                        const ipRegex = /(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/g;
+                        const cidrRegex = /\/(\d{1,2})/;
+                        const matches = input.match(ipRegex) || [];
+                        const cidrMatch = input.match(cidrRegex);
+                        if (matches.length === 0) throw new Error("No valid IP address found.");
+                        let ip = matches[0];
+                        let cidr;
+                        if (cidrMatch) cidr = parseInt(cidrMatch[1], 10);
+                        else if (matches.length > 1) cidr = IPTools.subnetMaskToCidr(matches[1]);
+                        else { cidr = IPTools.getClassfulCidr(ip); if (cidr === null) throw new Error("No subnet specified and could not determine a default class."); }
+                        if (!IPTools.isValidIp(ip) || cidr < 0 || cidr > 32) throw new Error("Invalid IP/CIDR combination.");
+                        return this.calculateSubnetDetails(ip, cidr);
+                    },
+                    calculateSubnetDetails(ip, cidr) { const ipLong = IPTools.ipToLong(ip); const maskLong = IPTools.cidrToSubnetMaskLong(cidr); const networkLong = ipLong & maskLong; const broadcastLong = networkLong | (~maskLong >>> 0); const totalHosts = Math.pow(2, 32 - cidr); const usableHosts = totalHosts > 2 ? totalHosts - 2 : 0; return { ipAddress: ip, cidr, usableHosts, networkAddress: IPTools.longToIp(networkLong), broadcastAddress: IPTools.longToIp(broadcastLong), subnetMask: IPTools.longToIp(maskLong), wildcardMask: IPTools.longToIp(~maskLong >>> 0), hostRange: usableHosts > 0 ? `${IPTools.longToIp(networkLong + 1)} - ${IPTools.longToIp(broadcastLong - 1)}` : 'N/A', ipType: IPTools.isPrivateIp(ip) ? "Private (RFC 1918)" : "Public" }; },
+                    formatFullResponse(details) { const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>`; const diagram = this.generateNetworkDiagram(details); return `<p class="mb-2">Full breakdown for <strong>${details.ipAddress}/${details.cidr}</strong>:</p><div class="flex justify-between items-center text-lg font-semibold" style="color: ${details.ipType.startsWith('Public') ? '#06b6d4' : '#f59e0b'};"><span>${details.ipType}</span></div>${diagram}<hr class="my-2" style="border-color: var(--border-color);"><div class="text-sm text-secondary space-y-1"><div class="flex justify-between items-center"><span><strong>Network Address:</strong> ${details.networkAddress}</span><span class="copy-icon" onclick="copyToClipboard('${details.networkAddress}', this)" title="Copy">${copyIconSvg}</span></div><div class="flex justify-between items-center"><span><strong>Broadcast Address:</strong> ${details.broadcastAddress}</span><span class="copy-icon" onclick="copyToClipboard('${details.broadcastAddress}', this)" title="Copy">${copyIconSvg}</span></div><div class="flex justify-between items-center"><span><strong>Subnet Mask:</strong> ${details.subnetMask} /${details.cidr}</span><span class="copy-icon" onclick="copyToClipboard('${details.subnetMask} /${details.cidr}', this)" title="Copy">${copyIconSvg}</span></div><div class="flex justify-between items-center"><span><strong>Wildcard Mask:</strong> ${details.wildcardMask}</span><span class="copy-icon" onclick="copyToClipboard('${details.wildcardMask}', this)" title="Copy">${copyIconSvg}</span></div><div class="flex justify-between items-center"><span><strong>Host Range:</strong> ${details.hostRange}</span><span class="copy-icon" onclick="copyToClipboard('${details.hostRange}', this)" title="Copy">${copyIconSvg}</span></div><div class="flex justify-between items-center"><span><strong>Usable Hosts:</strong> ${details.usableHosts.toLocaleString()}</span></div></div>`; },
+                    generateNetworkDiagram(details) { const netPercent = (details.cidr / 32) * 100; return `<div class="my-3 font-mono text-xs text-secondary"><div class="w-full flex rounded overflow-hidden h-6 bg-tertiary diagram-bar"><div style="width: ${netPercent}%" class="flex items-center justify-center" title="Network Bits: ${details.cidr}" style="background-color: var(--accent-color);"><span class="text-white font-bold">N</span></div><div style="width: ${100 - netPercent}%" class="bg-green-500 flex items-center justify-center" title="Host Bits: ${32 - details.cidr}"><span class="text-white font-bold">H</span></div></div><div class="flex justify-between mt-1"><span>${details.networkAddress}</span><span>${details.broadcastAddress}</span></div></div>`; },
+                    appendMessage(message, sender) { const row = document.createElement('div'); row.className = `flex mb-4 ${sender === 'user' ? 'justify-end' : 'justify-start'}`; row.innerHTML = `<div class="max-w-[85%] p-4 rounded-lg chat-bubble ${sender === 'user' ? 'bg-tertiary text-primary rounded-br-none' : 'bot-bubble text-white rounded-tl-none'}" style="background-color: ${sender === 'user' ? 'var(--bg-tertiary)' : 'var(--accent-color)'};">${message}</div>`; ui.chatWindow.appendChild(row); ui.chatWindow.scrollTop = ui.chatWindow.scrollHeight; },
+                    clear() { ui.chatWindow.innerHTML = ''; }
+                },
+
+                vlsmManager: {
+                    init() { ui.addReqBtn.addEventListener('click', () => this.addRequirementRow()); ui.calcVlsmBtn.addEventListener('click', () => this.handleCalculation()); this.addRequirementRow(); },
+                    addRequirementRow() { const row = document.createElement('div'); row.className = 'flex items-center gap-2'; row.innerHTML = `<input type="text" class="w-full border-2 rounded-lg py-1 px-3 bg-tertiary border-color text-input text-gray-900 dark:text-white" placeholder="e.g., Sales Dept"><input type="number" class="w-full border-2 rounded-lg py-1 px-3 bg-tertiary border-color text-input text-gray-900 dark:text-white" placeholder="e.g., 500 hosts"><button class="p-1 rounded-full text-white bg-red-500">&times;</button>`; row.querySelector('button').addEventListener('click', () => row.remove()); ui.requirementsContainer.appendChild(row); },
+                    handleCalculation() {
+                        try {
+                            const majorNetwork = ui.majorNetworkInput.value.trim();
+                            if (!majorNetwork) throw new Error("Major network block is required.");
+                            const [majorIp, majorCidrStr] = majorNetwork.split('/');
+                            if (!IPTools.isValidIp(majorIp) || !majorCidrStr) throw new Error("Invalid major network format. Use IP/CIDR.");
+                            const majorCidr = parseInt(majorCidrStr, 10);
+                            const requirements = Array.from(ui.requirementsContainer.children).map(row => ({ name: row.querySelector('input[type="text"]').value || 'Unnamed', hosts: parseInt(row.querySelector('input[type="number"]').value) || 0 })).filter(r => r.hosts > 0).sort((a, b) => b.hosts - a.hosts);
+                            if (requirements.length === 0) throw new Error("At least one valid host requirement is needed.");
+                            
+                            let currentIp = IPTools.ipToLong(majorIp);
+                            if ((currentIp & IPTools.cidrToSubnetMaskLong(majorCidr)) !== currentIp) throw new Error("Major IP is not a valid network address for its CIDR.");
+
+                            const results = [];
+                            const endOfMajorNet = IPTools.ipToLong(majorIp) + Math.pow(2, 32 - majorCidr);
+                            for (const req of requirements) {
+                                const neededHostBits = Math.ceil(Math.log2(req.hosts + 2));
+                                const newCidr = 32 - neededHostBits;
+                                const subnetSize = Math.pow(2, neededHostBits);
+                                if (newCidr < majorCidr) throw new Error(`Requirement for ${req.name} is too large for the major network.`);
+                                if (currentIp + subnetSize > endOfMajorNet) throw new Error("Not enough address space for all requirements.");
+                                const details = app.chatManager.calculateSubnetDetails(IPTools.longToIp(currentIp), newCidr);
+                                results.push({ ...req, allocated: details });
+                                currentIp += subnetSize;
+                            }
+                            this.displayResults(results);
+                        } catch (e) { ui.vlsmResultsContainer.innerHTML = `<div class="p-4 rounded-lg text-white" style="background-color: var(--red-color);">${e.message}</div>`; }
+                    },
+                    displayResults(results) {
+                        let html = `<div class="text-lg font-bold mb-2 text-primary">VLSM Allocation Plan:</div><table class="w-full text-left border-collapse"><thead class="border-b-2" style="border-color: var(--border-color);"><tr><th class="p-2 text-primary">Name</th><th class="p-2 text-primary">Required</th><th class="p-2 text-primary">Allocated Network</th><th class="p-2 text-primary">Mask</th><th class="p-2 text-primary">Range</th></tr></thead><tbody>${results.map(r => `<tr class="border-b" style="border-color: var(--bg-tertiary);"><td class="p-2 text-secondary">${r.name}</td><td class="p-2 text-secondary">${r.hosts}</td><td class="p-2 font-mono text-secondary">${r.allocated.networkAddress}/${r.allocated.cidr}</td><td class="p-2 font-mono text-secondary">${r.allocated.subnetMask}</td><td class="p-2 font-mono text-xs text-secondary">${r.allocated.hostRange}</td></tr>`).join('')}</tbody></table>`;
+                        ui.vlsmResultsContainer.innerHTML = html;
+                    }
+                },
+
+                matrixManager: {
+                    intervalId: null,
+                    start() {
+                        ui.matrixOverlay.classList.remove('hidden');
+                        const canvas = ui.matrixCanvas;
+                        const ctx = canvas.getContext('2d');
+                        
+                        canvas.width = window.innerWidth;
+                        canvas.height = window.innerHeight;
+
+                        const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+                        const binary = '01';
+                        const alphabet = katakana + binary;
+                        
+                        const fontSize = 16;
+                        const columns = canvas.width / fontSize;
+                        const rainDrops = [];
+
+                        for(let x = 0; x < columns; x++) {
+                            rainDrops[x] = 1;
+                        }
+
+                        const draw = () => {
+                            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                            
+                            ctx.fillStyle = '#0F0';
+                            ctx.font = fontSize + 'px monospace';
+
+                            for(let i = 0; i < rainDrops.length; i++) {
+                                const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+                                ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+                                
+                                if(rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975){
+                                    rainDrops[i] = 0;
+                                }
+                                rainDrops[i]++;
+                            }
+                        };
+                        
+                        this.intervalId = setInterval(draw, 30);
+                        
+                        setTimeout(() => this.stop(), 5000); // Stop after 5 seconds
+                    },
+                    stop() {
+                        clearInterval(this.intervalId);
+                        ui.matrixOverlay.classList.add('hidden');
+                    }
+                }
+            };
+            
+            app.init();
+        });
+        
+        function copyToClipboard(text, element) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalIcon = element.innerHTML;
+                element.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color:#22c55e" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
+                setTimeout(() => { element.innerHTML = originalIcon; }, 1500);
+            });
+        }
+    </script>
+</body>
+</html>
