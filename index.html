@@ -1,867 +1,974 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cisco CLI Assistant</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- React and ReactDOM CDNs -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel Standalone CDN for JSX compilation in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase CDNs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Main App component
-const App = () => {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [recentCommands, setRecentCommands] = useState([]);
-  const [activeTab, setActiveTab] = useState('chat');
+        // IMPORTANT: Your actual Firebase project configuration
+        // These values have been updated based on your provided details.
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyAoJQG1ln75vzE_xT49EmZ3XX_nr4pxgQQ",
+            authDomain: "cli-bot-55ebf.firebaseapp.com",
+            projectId: "cli-bot-55ebf",
+            storageBucket: "cli-bot-55ebf.firebasestorage.app",
+            messagingSenderId: "438568879623",
+            appId: "1:438568879623:web:f99d46840734f752a08ca2"
+            // measurementId: "G-40LRGK2RYQ" // Not directly used by auth/firestore, so excluded here
+        };
 
-  // Firebase states
-  const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
-  const [userId, setUserId] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+        // For local HTML file testing, __app_id and __initial_auth_token are not provided by Canvas.
+        // We'll use a dummy app ID and handle auth anonymously if no token is present.
+        const APP_ID = FIREBASE_CONFIG.projectId || 'default-cisco-cli-app';
+        const INITIAL_AUTH_TOKEN = ""; // This would be provided by Canvas, leave empty for local testing.
 
-  // States for Error Resolution Tab
-  const [errorMessageInput, setErrorMessageInput] = useState('');
-  const [errorResolutionResult, setErrorResolutionResult] = useState('');
-  const [errorLoading, setErrorLoading] = useState(false);
+        // Make these available globally for the React component script
+        window.__app_id = APP_ID;
+        window.__firebase_config = JSON.stringify(FIREBASE_CONFIG);
+        window.__initial_auth_token = INITIAL_AUTH_TOKEN;
 
-  // States for Config Audit Tab
-  const [configSnippetInput, setConfigSnippetInput] = useState('');
-  const [configAuditResult, setConfigAuditResult] = useState('');
-  const [configLoading, setConfigLoading] = useState(false);
+        // Make Firebase functions globally accessible (for the React script)
+        window.firebase = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, deleteDoc, getDocs
+        };
 
-  // State for Favorites Tab
-  const [favorites, setFavorites] = useState([]);
-
-  // State for confirmation modal
-  const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
-
-  const messagesEndRef = useRef(null);
-
-  // Firebase Initialization and Authentication
-  useEffect(() => {
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-
-    if (Object.keys(firebaseConfig).length === 0) {
-      console.error("Firebase config is missing. Data persistence will not work.");
-      setIsAuthReady(true); // Allow app to run without persistence
-      return;
-    }
-
-    const app = initializeApp(firebaseConfig);
-    const firestore = getFirestore(app);
-    const firebaseAuth = getAuth(app);
-
-    setDb(firestore);
-    setAuth(firebaseAuth);
-
-    // Sign in anonymously or with custom token
-    const signIn = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(firebaseAuth, __initial_auth_token);
-        } else {
-          await signInAnonymously(firebaseAuth);
+        // This warning should now disappear if your config is correct.
+        if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.includes("REPLACE_WITH_YOUR_")) {
+            console.warn("Firebase API Key is missing or is a placeholder. Firebase features (chat history, favorites) will not work until you update FIREBASE_CONFIG with your actual project details.");
         }
-      } catch (error) {
-        console.error("Firebase authentication error:", error);
-        // Fallback or error handling if auth fails
-      }
-    };
+    </script>
+</head>
+<body class="bg-gray-900 font-inter text-gray-100">
+    <div id="root"></div>
 
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-      if (user) {
-        setUserId(user.uid);
-        console.log("Authenticated with user ID:", user.uid);
-      } else {
-        console.log("No user signed in. Attempting anonymous sign-in.");
-        signIn(); // Attempt sign-in if no user
-      }
-      setIsAuthReady(true); // Auth state is ready after initial check or sign-in attempt
-    });
+    <script type="text/babel">
+        // React App component code starts here
+        const { useState, useEffect, useRef } = React;
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = window.firebase;
+        const { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, deleteDoc, getDocs } = window.firebase;
 
-    return () => unsubscribe(); // Cleanup auth listener
-  }, []);
+        // Global variables from window
+        const __app_id = window.__app_id;
+        const __firebase_config = window.__firebase_config;
+        const __initial_auth_token = window.__initial_auth_token;
 
-  // Listen for chat messages from Firestore
-  useEffect(() => {
-    if (db && userId && isAuthReady) {
-      const chatCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`);
-      const q = query(chatCollectionRef, orderBy('timestamp', 'asc')); // Order by timestamp
+        // Main App component
+        const App = () => {
+          const [messages, setMessages] = useState([]);
+          const [input, setInput] = useState('');
+          const [loading, setLoading] = useState(false);
+          const [recentCommands, setRecentCommands] = useState([]);
+          const [activeTab, setActiveTab] = useState('chat');
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedMessages = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setMessages(fetchedMessages);
-      }, (error) => {
-        console.error("Error fetching chat messages:", error);
-      });
+          // Firebase states
+          const [db, setDb] = useState(null);
+          const [auth, setAuth] = useState(null);
+          const [userId, setUserId] = useState(null);
+          const [isAuthReady, setIsAuthReady] = useState(false);
 
-      return () => unsubscribe(); // Cleanup listener
-    }
-  }, [db, userId, isAuthReady]);
+          // States for Error Resolution Tab
+          const [errorMessageInput, setErrorMessageInput] = useState('');
+          const [errorResolutionResult, setErrorResolutionResult] = useState('');
+          const [errorLoading, setErrorLoading] = useState(false);
 
-  // Listen for favorites from Firestore
-  useEffect(() => {
-    if (db && userId && isAuthReady) {
-      const favoritesCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/favorites`);
-      const unsubscribe = onSnapshot(favoritesCollectionRef, (snapshot) => {
-        const fetchedFavorites = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setFavorites(fetchedFavorites);
-      }, (error) => {
-        console.error("Error fetching favorites:", error);
-      });
+          // States for Config Audit Tab
+          const [configSnippetInput, setConfigSnippetInput] = useState('');
+          const [configAuditResult, setConfigAuditResult] = useState('');
+          const [configLoading, setConfigLoading] = useState(false);
 
-      return () => unsubscribe(); // Cleanup listener
-    }
-  }, [db, userId, isAuthReady]);
+          // State for Favorites Tab
+          const [favorites, setFavorites] = useState([]);
 
-  // Load recent commands from localStorage (still used for quick access, distinct from full history)
-  useEffect(() => {
-    const storedRecentCommands = localStorage.getItem('ciscoChatbotRecentCommands');
-    if (storedRecentCommands) {
-      setRecentCommands(JSON.parse(storedRecentCommands));
-    }
-  }, []);
+          // State for confirmation modal
+          const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
 
-  // Save recent commands to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('ciscoChatbotRecentCommands', JSON.stringify(recentCommands));
-  }, [recentCommands]);
+          const messagesEndRef = useRef(null);
 
-  // Scroll to the bottom of the chat window when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+          // Firebase Initialization and Authentication
+          useEffect(() => {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
-  // Function to send a message to the Gemini API for the main chat
-  const sendChatMessage = async (commandToSearch = input) => {
-    if (commandToSearch.trim() === '' || !db || !userId) return; // Ensure Firebase is ready
+            let appInstance;
+            let firestoreInstance;
+            let authInstance;
 
-    const userMessageContent = commandToSearch.trim();
+            try {
+                // Check for valid API key before initializing Firebase
+                if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("REPLACE_WITH_YOUR_") || !firebaseConfig.projectId || firebaseConfig.projectId.includes("REPLACE_WITH_YOUR_")) {
+                    console.error("Firebase configuration is incomplete or invalid. Please update FIREBASE_CONFIG with your actual project details (apiKey, projectId, etc.). Firebase features (chat history, favorites) will be disabled.");
+                    setIsAuthReady(true); // Allow UI to load even without persistence
+                    return; // Stop useEffect here
+                }
 
-    // Handle '?' input for instructions
-    if (userMessageContent === '?') {
-      const instructionMessage = {
-        sender: 'bot',
-        text: `### How to use CLI Chat:
+                appInstance = initializeApp(firebaseConfig);
+                firestoreInstance = getFirestore(appInstance);
+                authInstance = getAuth(appInstance);
+
+                setDb(firestoreInstance);
+                setAuth(authInstance);
+
+                // Sign in anonymously or with custom token
+                const signIn = async () => {
+                  try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                      await signInWithCustomToken(authInstance, __initial_auth_token);
+                    } else {
+                      await signInAnonymously(authInstance);
+                    }
+                  } catch (error) {
+                    console.error("Firebase authentication error during sign-in:", error);
+                    // Fallback or error handling if auth fails
+                  }
+                };
+
+                const unsubscribe = onAuthStateChanged(authInstance, (user) => {
+                  if (user) {
+                    setUserId(user.uid);
+                    console.log("Authenticated with user ID:", user.uid);
+                  } else {
+                    console.log("No user signed in. Attempting anonymous sign-in.");
+                    signIn(); // Attempt sign-in if no user
+                  }
+                  setIsAuthReady(true); // Auth state is ready after initial check or sign-in attempt
+                });
+
+                return () => unsubscribe(); // Cleanup auth listener
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                setIsAuthReady(true); // Ensure UI loads even if Firebase init fails
+            }
+          }, []);
+
+          // Listen for chat messages from Firestore
+          useEffect(() => {
+            if (db && userId && isAuthReady) {
+              const chatCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`);
+              const q = query(chatCollectionRef, orderBy('timestamp', 'asc')); // Order by timestamp
+
+              const unsubscribe = onSnapshot(q, (snapshot) => {
+                const fetchedMessages = snapshot.docs.map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                }));
+                setMessages(fetchedMessages);
+              }, (error) => {
+                console.error("Error fetching chat messages:", error);
+              });
+
+              return () => unsubscribe(); // Cleanup listener
+            }
+          }, [db, userId, isAuthReady]);
+
+          // Listen for favorites from Firestore
+          useEffect(() => {
+            if (db && userId && isAuthReady) {
+              const favoritesCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/favorites`);
+              const unsubscribe = onSnapshot(favoritesCollectionRef, (snapshot) => {
+                const fetchedFavorites = snapshot.docs.map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                }));
+                setFavorites(fetchedFavorites);
+              }, (error) => {
+                console.error("Error fetching favorites:", error);
+              });
+
+              return () => unsubscribe(); // Cleanup listener
+            }
+          }, [db, userId, isAuthReady]);
+
+          // Load recent commands from localStorage (still used for quick access, distinct from full history)
+          useEffect(() => {
+            const storedRecentCommands = localStorage.getItem('ciscoChatbotRecentCommands');
+            if (storedRecentCommands) {
+              setRecentCommands(JSON.parse(storedRecentCommands));
+            }
+          }, []);
+
+          // Save recent commands to localStorage whenever they change
+          useEffect(() => {
+            localStorage.setItem('ciscoChatbotRecentCommands', JSON.stringify(recentCommands));
+          }, [recentCommands]);
+
+          // Scroll to the bottom of the chat window when new messages arrive
+          useEffect(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, [messages]);
+
+          // Function to send a message to the Gemini API for the main chat
+          const sendChatMessage = async (commandToSearch = input) => {
+            if (commandToSearch.trim() === '') return; // No need for db/userId check here, handled by disabled state
+
+            const userMessageContent = commandToSearch.trim();
+
+            // Handle '?' input for instructions
+            if (userMessageContent === '?') {
+              const instructionMessage = {
+                sender: 'bot',
+                text: `### How to use CLI Chat:
 - Ask about specific Cisco CLI commands (e.g., "**What is \`show ip route\`?**").
 - Ask follow-up questions (e.g., "What about GigabitEthernet0/1?").
 - Get help configuring something (e.g., "**How do I configure OSPF?**").
 - Describe a network problem for guided troubleshooting (e.g., "**My OSPF neighbors are down**").
 - Star a bot response (★) to save it to your Favorites tab.`,
-        timestamp: serverTimestamp(),
-        isFavorite: false,
-        fromCache: false // This is a generated instruction, not from API or cache
-      };
-      await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), instructionMessage);
-      setInput('');
-      return;
-    }
+                timestamp: serverTimestamp(), // Will be null if db is null
+                isFavorite: false,
+                fromCache: false // This is a generated instruction, not from API or cache
+              };
+              // Only add to Firestore if db and userId are available
+              if (db && userId) {
+                await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), instructionMessage);
+              } else {
+                // If persistence is off, just add to local state
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...instructionMessage, timestamp: new Date() }]);
+              }
+              setInput('');
+              return;
+            }
 
-    const userMessageForDb = {
-      sender: 'user',
-      text: userMessageContent,
-      timestamp: serverTimestamp(),
-      isFavorite: false
-    };
-    const userMessageForApi = { role: 'user', parts: [{ text: userMessageContent }] };
+            const userMessageForDb = {
+              sender: 'user',
+              text: userMessageContent,
+              timestamp: serverTimestamp(), // Will be null if db is null
+              isFavorite: false
+            };
+            const userMessageForApi = { role: 'user', parts: [{ text: userMessageContent }] };
 
 
-    setLoading(true);
+            setLoading(true);
 
-    // Add user message to Firestore
-    try {
-      await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), userMessageForDb);
-    } catch (dbError) {
-      console.error("Error adding user message to Firestore:", dbError);
-      setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: 'Error saving your message. Please try again.' }]);
-      setLoading(false);
-      return;
-    }
+            // Add user message to Firestore if db and userId are available
+            if (db && userId) {
+                try {
+                    await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), userMessageForDb);
+                } catch (dbError) {
+                    console.error("Error adding user message to Firestore:", dbError);
+                    setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: 'Error saving your message. Please try again.' }]);
+                    setLoading(false);
+                    return;
+                }
+            } else {
+                // If persistence is off, just add to local state
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...userMessageForDb, timestamp: new Date() }]);
+            }
 
-    setInput('');
+            setInput('');
 
-    const cachedResponse = localStorage.getItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`);
-    if (cachedResponse) {
-      const botResponseText = JSON.parse(cachedResponse).text;
-      const botMessageForDb = {
-        sender: 'bot',
-        text: botResponseText,
-        timestamp: serverTimestamp(),
-        fromCache: true,
-        isFavorite: false
-      };
-      try {
-        await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
-      } catch (dbError) {
-        console.error("Error adding cached bot message to Firestore:", dbError);
-      }
-      setLoading(false);
-      setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
-      return;
-    }
+            const cachedResponse = localStorage.getItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`);
+            if (cachedResponse) {
+              const botResponseText = JSON.parse(cachedResponse).text;
+              const botMessageForDb = {
+                sender: 'bot',
+                text: botResponseText,
+                timestamp: serverTimestamp(), // Will be null if db is null
+                fromCache: true,
+                isFavorite: false
+              };
+              if (db && userId) {
+                try {
+                  await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
+                } catch (dbError) {
+                  console.error("Error adding cached bot message to Firestore:", dbError);
+                }
+              } else {
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...botMessageForDb, timestamp: new Date() }]);
+              }
+              setLoading(false);
+              setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
+              return;
+            }
 
-    try {
-      const systemInstruction = `You are an advanced Cisco CLI Assistant designed to help network engineers.
-      You have access to the **latest and most authoritative Cisco documentation and knowledge bases**.
-      In this chat mode, you can:
-      1.  **Explain Commands:** When asked about a specific command, provide details in this structured format, drawing from the latest documentation:
-          **Command:** [The command itself]
-          **Syntax:** [The full syntax with parameters]
-          **When to use it:** [Practical scenarios/use cases]
-          **Example:**
-          \`\`\`
-          [Exact output of the command as it would appear on a Cisco device, including the prompt and preserving all spacing and formatting]
-          \`\`\`
-      2.  **Contextual Understanding:** Remember previous turns in the conversation to answer follow-up questions.
-      3.  **Interactive Command Builder:** If a user expresses intent to *configure* something (e.g., "configure OSPF", "set up a VLAN"), ask clarifying questions step-by-step to help them build the complete command or sequence of commands. Guide them through the necessary parameters.
-      4.  **Guided Troubleshooting:** If a user describes a network problem (e.g., "OSPF neighbors down", "cannot ping remote host"), act as a diagnostic assistant. Ask relevant questions to gather more information and suggest a logical sequence of CLI commands to run for troubleshooting, explaining the purpose of each step.
-      5.  **Suggest Corrections:** If you detect a likely misspelling or a very close alternative to the user's command, suggest "Did you mean: [suggested command]?" at the beginning of your response.
+            try {
+              const systemInstruction = `You are an advanced Cisco CLI Assistant designed to help network engineers.
+              You have access to the **latest and most authoritative Cisco documentation and knowledge bases**.
+              In this chat mode, you can:
+              1.  **Explain Commands:** When asked about a specific command, provide details in this structured format, drawing from the latest documentation:
+                  **Command:** [The command itself]
+                  **Syntax:** [The full syntax with parameters]
+                  **When to use it:** [Practical scenarios/use cases]
+                  **Example:**
+                  \`\`\`
+                  [Exact output of the command as it would appear on a Cisco device, including the prompt and preserving all spacing and formatting]
+                  \`\`\`
+              2.  **Contextual Understanding:** Remember previous turns in the conversation to answer follow-up questions.
+              3.  **Interactive Command Builder:** If a user expresses intent to *configure* something (e.g., "configure OSPF", "set up a VLAN"), ask clarifying questions step-by-step to help them build the complete command or sequence of commands. Guide them through the necessary parameters.
+              4.  **Guided Troubleshooting:** If a user describes a network problem (e.g., "OSPF neighbors down", "cannot ping remote host"), act as a diagnostic assistant. Ask relevant questions to gather more information and suggest a logical sequence of CLI commands to run for troubleshooting, explaining the purpose of each step.
+              5.  **Suggest Corrections:** If you detect a likely misspelling or a very close alternative to the user's command, suggest "Did you mean: [suggested command]?" at the beginning of your response.
 
-      Do NOT handle error message interpretation or configuration review in this chat mode. Direct users to the appropriate tabs for those specific tasks.
-      Be concise and direct, but thorough in your explanations and guidance.`;
+              Do NOT handle error message interpretation or configuration review in this chat mode. Direct users to the appropriate tabs for those specific tasks.
+              Be concise and direct, but thorough in your explanations and guidance.`;
 
-      const chatHistoryForApi = [
-        { role: 'user', parts: [{ text: systemInstruction }] },
-        ...messages.slice(-10).map(msg => ({
-          role: msg.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.text }]
-        })),
-        userMessageForApi
-      ];
+              // Build chat history for the API call (limit to last 10 for token management)
+              const chatHistoryForApi = [
+                { role: 'user', parts: [{ text: systemInstruction }] },
+                ...messages.slice(-10).map(msg => ({
+                  role: msg.sender === 'user' ? 'user' : 'model',
+                  parts: [{ text: msg.text }]
+                })),
+                userMessageForApi
+              ];
 
-      const payload = { contents: chatHistoryForApi };
-      const apiKey = "";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+              const payload = { contents: chatHistoryForApi };
+              const apiKey = ""; // Canvas will provide this key at runtime
+              const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+              const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
 
-      const result = await response.json();
+              const result = await response.json();
 
-      let botResponseText = 'Sorry, I could not get a response. Please try again.';
-      if (result.candidates && result.candidates.length > 0 &&
-          result.candidates[0].content && result.candidates[0].content.parts &&
-          result.candidates[0].content.parts.length > 0) {
-        botResponseText = result.candidates[0].content.parts[0].text;
-      }
+              let botResponseText = 'Sorry, I could not get a response. Please try again.';
+              if (result.candidates && result.candidates.length > 0 &&
+                  result.candidates[0].content && result.candidates[0].content.parts &&
+                  result.candidates[0].content.parts.length > 0) {
+                botResponseText = result.candidates[0].content.parts[0].text;
+              }
 
-      const botMessageForDb = {
-        sender: 'bot',
-        text: botResponseText,
-        timestamp: serverTimestamp(),
-        isFavorite: false
-      };
+              const botMessageForDb = {
+                sender: 'bot',
+                text: botResponseText,
+                timestamp: serverTimestamp(), // Will be null if db is null
+                isFavorite: false
+              };
 
-      try {
-        await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
-      } catch (dbError) {
-        console.error("Error adding bot message to Firestore:", dbError);
-      }
+              // Add bot message to Firestore if db and userId are available
+              if (db && userId) {
+                try {
+                  await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
+                } catch (dbError) {
+                  console.error("Error adding bot message to Firestore:", dbError);
+                }
+              } else {
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...botMessageForDb, timestamp: new Date() }]);
+              }
 
-      if (botResponseText.includes('**Command:**') && botResponseText.includes('**Syntax:**')) {
-           localStorage.setItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`, JSON.stringify({ text: botResponseText }));
-      }
-      setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
+              // Cache response if it's a direct command explanation
+              if (botResponseText.includes('**Command:**') && botResponseText.includes('**Syntax:**')) {
+                   localStorage.setItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`, JSON.stringify({ text: botResponseText }));
+              }
+              setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
 
-    } catch (error) {
-      console.error('Error fetching from Gemini API:', error);
-      const errorMessage = 'An error occurred while communicating with the AI. Please try again.';
-      try {
-        await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), {
-          sender: 'bot',
-          text: errorMessage,
-          timestamp: serverTimestamp(),
-          isFavorite: false
-        });
-      } catch (dbError) {
-        console.error("Error adding AI error message to Firestore:", dbError);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+            } catch (error) {
+              console.error('Error fetching from Gemini API:', error);
+              const errorMessage = 'An error occurred while communicating with the AI. Please try again.';
+              if (db && userId) {
+                try {
+                  await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), {
+                    sender: 'bot',
+                    text: errorMessage,
+                    timestamp: serverTimestamp(), // Will be null if db is null
+                    isFavorite: false
+                  });
+                } catch (dbError) {
+                  console.error("Error adding AI error message to Firestore:", dbError);
+                }
+              } else {
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: errorMessage, timestamp: new Date() }]);
+              }
+            } finally {
+              setLoading(false);
+            }
+          };
 
-  // Function to send error message to Gemini API
-  const sendErrorMessage = async () => {
-    if (errorMessageInput.trim() === '' || !db || !userId) return;
+          // Function to send error message to Gemini API
+          const sendErrorMessage = async () => {
+            if (errorMessageInput.trim() === '') return; // No need for db/userId check here, handled by disabled state
 
-    const inputContent = errorMessageInput.trim();
+            const inputContent = errorMessageInput.trim();
 
-    // Handle '?' input for instructions
-    if (inputContent === '?') {
-      setErrorResolutionResult(`### How to use Error Resolution:
+            // Handle '?' input for instructions
+            if (inputContent === '?') {
+              setErrorResolutionResult(`### How to use Error Resolution:
 - **Paste a full Cisco error message** (e.g., \`%OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached\`).
 - The bot will explain its meaning, common causes, and provide specific resolution steps.
 - Focus on providing the exact error message for best results.`);
-      setErrorMessageInput('');
-      return;
-    }
+              setErrorMessageInput('');
+              return;
+            }
 
-    setErrorResolutionResult('');
-    setErrorLoading(true);
+            setErrorResolutionResult('');
+            setErrorLoading(true);
 
-    try {
-      const prompt = `You are a Cisco CLI Assistant specializing in error message interpretation and resolution.
-      A network engineer has provided the following Cisco error message. Please provide a user-friendly, well-formatted, and easy-to-read response.
-      **Use Markdown for formatting:**
-      -   Use **bold text** for important keywords, command names, and crucial details.
-      -   Use \`backticks\` for inline commands or specific values.
-      -   Use multi-line code blocks (\`\`\`\n...\n\`\`\`) for command examples or output snippets to make them visually distinct.
-      -   Use bullet points or numbered lists for steps and causes.
+            try {
+              const prompt = `You are a Cisco CLI Assistant specializing in error message interpretation and resolution.
+              A network engineer has provided the following Cisco error message. Please provide a user-friendly, well-formatted, and easy-to-read response.
+              **Use Markdown for formatting:**
+              -   Use **bold text** for important keywords, command names, and crucial details.
+              -   Use \`backticks\` for inline commands or specific values.
+              -   Use multi-line code blocks (\`\`\`\n...\n\`\`\`) for command examples or output snippets to make them visually distinct.
+              -   Use bullet points or numbered lists for steps and causes.
 
-      Structure your response with these clear headings:
-      ### Error Meaning
-      [Clear explanation of what the error signifies.]
+              Structure your response with these clear headings:
+              ### Error Meaning
+              [Clear explanation of what the error signifies.]
 
-      ### Common Causes
-      [List of typical reasons why this error might occur, each starting with a bullet point.]
+              ### Common Causes
+              [List of typical reasons why this error might occur, each starting with a bullet point.]
 
-      ### Resolution Steps
-      [Numbered list of specific CLI commands or actions to resolve the error. Be precise and actionable. Wrap commands in \`backticks\` or \`\`\`code blocks\`\`\`.]
+              ### Resolution Steps
+              [Numbered list of specific CLI commands or actions to resolve the error. Be precise and actionable. Wrap commands in \`backticks\` or \`\`\`code blocks\`\`\`.]
 
-      ### Additional Tips (if applicable)
-      [Any extra advice or considerations for troubleshooting.]
+              ### Additional Tips (if applicable)
+              [Any extra advice or considerations for troubleshooting.]
 
-      Simulate consulting a knowledge base or external resources to provide the best possible solution.
+              Simulate consulting a knowledge base or external resources to provide the best possible solution.
 
-      Error Message:
-      \`\`\`
-      ${inputContent}
-      \`\`\`
-      `;
+              Error Message:
+              \`\`\`
+              ${inputContent}
+              \`\`\`
+              `;
 
-      const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-      const payload = { contents: chatHistory };
-      const apiKey = "";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+              const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+              const payload = { contents: chatHistory };
+              const apiKey = ""; // Canvas will provide this key at runtime
+              const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+              const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
 
-      const result = await response.json();
+              const result = await response.json();
 
-      if (result.candidates && result.candidates.length > 0 &&
-          result.candidates[0].content && result.candidates[0].content.parts &&
-          result.candidates[0].content.parts.length > 0) {
-        setErrorResolutionResult(result.candidates[0].content.parts[0].text);
-      } else {
-        setErrorResolutionResult('Sorry, I could not interpret this error. Please try again or provide more context.');
-      }
-    } catch (error) {
-      console.error('Error fetching error resolution from Gemini API:', error);
-      setErrorResolutionResult('An error occurred while processing the error message. Please try again.');
-    } finally {
-      setErrorLoading(false);
-    }
-  };
+              if (result.candidates && result.candidates.length > 0 &&
+                  result.candidates[0].content && result.candidates[0].content.parts &&
+                  result.candidates[0].content.parts.length > 0) {
+                setErrorResolutionResult(result.candidates[0].content.parts[0].text);
+              } else {
+                setErrorResolutionResult('Sorry, I could not interpret this error. Please try again or provide more context.');
+              }
+            } catch (error) {
+              console.error('Error fetching error resolution from Gemini API:', error);
+              setErrorResolutionResult('An error occurred while processing the error message. Please try again.');
+            } finally {
+              setErrorLoading(false);
+            }
+          };
 
-  // Function to send config snippet to Gemini API
-  const sendConfigSnippet = async () => {
-    if (configSnippetInput.trim() === '' || !db || !userId) return;
+          // Function to send config snippet to Gemini API
+          const sendConfigSnippet = async () => {
+            if (configSnippetInput.trim() === '') return; // No need for db/userId check here, handled by disabled state
 
-    const inputContent = configSnippetInput.trim();
+            const inputContent = configSnippetInput.trim();
 
-    // Handle '?' input for instructions
-    if (inputContent === '?') {
-      setConfigAuditResult(`### How to use Config Audit:
+            // Handle '?' input for instructions
+            if (inputContent === '?') {
+              setConfigAuditResult(`### How to use Config Audit:
 - **Paste a Cisco configuration snippet** into the text area.
 - The bot will audit it for common misconfigurations and suggest best practices for optimization.
 - The report will be brief, highlighted, and easy to read.
 - Focus on providing relevant configuration sections.`);
-      setConfigSnippetInput('');
-      return;
-    }
+              setConfigSnippetInput('');
+              return;
+            }
 
-    setConfigAuditResult('');
-    setConfigLoading(true);
+            setConfigAuditResult('');
+            setConfigLoading(true);
 
-    try {
-      const prompt = `You are a Cisco CLI Assistant specializing in configuration review and auditing.
-      A network engineer has provided the following Cisco configuration snippet. Provide a **brief**, modern, and visually highlighted audit report.
-      **Do NOT include a section for "Potential Security Vulnerabilities."** Focus on misconfigurations and non-optimal settings.
+            try {
+              const prompt = `You are a Cisco CLI Assistant specializing in configuration review and auditing.
+              A network engineer has provided the following Cisco configuration snippet. Provide a **brief**, modern, and visually highlighted audit report.
+              **Do NOT include a section for "Potential Security Vulnerabilities."** Focus on misconfigurations and non-optimal settings.
 
-      **Use Markdown for maximum visual impact and highlighting:**
-      -   Use **bold text** for important keywords, configuration elements, and crucial details.
-      -   **Crucially, wrap ALL configuration lines, command examples, and suggested commands in multi-line code blocks (\`\`\`\n...\n\`\`\`) to make them stand out with a distinct background and monospace font.**
-      -   Use \`backticks\` for very short inline commands or specific values within a sentence.
-      -   Use bullet points or numbered lists for findings and suggestions to improve readability.
+              **Use Markdown for maximum visual impact and highlighting:**
+              -   Use **bold text** for important keywords, configuration elements, and crucial details.
+              -   **Crucially, wrap ALL configuration lines, command examples, and suggested commands in multi-line code blocks (\`\`\`\n...\n\`\`\`) to make them stand out with a distinct background and monospace font.**
+              -   Use \`backticks\` for very short inline commands or specific values within a sentence.
+              -   Use bullet points or numbered lists for findings and suggestions to improve readability.
 
-      Structure your response with these clear headings, keeping content brief:
-      ### Configuration Audit Summary
-      [Brief overview of the audit findings - 1-2 sentences.]
+              Structure your response with these clear headings, keeping content brief:
+              ### Configuration Audit Summary
+              [Brief overview of the audit findings - 1-2 sentences.]
 
-      ### Identified Misconfigurations
-      [List of identified misconfigurations (max 3-4 points), each with a brief explanation and relevant config lines in a code block.]
+              ### Identified Misconfigurations
+              [List of identified misconfigurations (max 3-4 points), each with a brief explanation and relevant config lines in a code block.]
 
-      ### Best Practices & Optimization
-      [List of settings that could be optimized or aligned with best practices (max 3-4 points), with brief suggestions for improvement and rationale. Include suggested commands in code blocks.]
+              ### Best Practices & Optimization
+              [List of settings that could be optimized or aligned with best practices (max 3-4 points), with brief suggestions for improvement and rationale. Include suggested commands in code blocks.]
 
-      ### Recommended Actions
-      [Numbered list of actionable steps or commands to implement the suggested improvements (max 3-5 steps). Use code blocks for commands.]
+              ### Recommended Actions
+              [Numbered list of actionable steps or commands to implement the suggested improvements (max 3-5 steps). Use code blocks for commands.]
 
-      Configuration Snippet:
-      \`\`\`
-      ${inputContent}
-      \`\`\`
-      `;
+              Configuration Snippet:
+              \`\`\`
+              ${inputContent}
+              \`\`\`
+              `;
 
-      const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-      const payload = { contents: chatHistory };
-      const apiKey = "";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+              const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+              const payload = { contents: chatHistory };
+              const apiKey = ""; // Canvas will provide this key at runtime
+              const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+              const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
 
-      const result = await response.json();
+              const result = await response.json();
 
-      if (result.candidates && result.candidates.length > 0 &&
-          result.candidates[0].content && result.candidates[0].content.parts &&
-          result.candidates[0].content.parts.length > 0) {
-        setConfigAuditResult(result.candidates[0].content.parts[0].text);
-      } else {
-        setConfigAuditResult('Sorry, I could not audit this configuration. Please try again or provide a valid snippet.');
-      }
-    } catch (error) {
-      console.error('Error fetching config audit from Gemini API:', error);
-      setConfigAuditResult('An error occurred while auditing the configuration. Please try again.');
-    } finally {
-      setConfigLoading(false);
-    }
-  };
+              if (result.candidates && result.candidates.length > 0 &&
+                  result.candidates[0].content && result.candidates[0].content.parts &&
+                  result.candidates[0].content.parts.length > 0) {
+                setConfigAuditResult(result.candidates[0].content.parts[0].text);
+              } else {
+                setConfigAuditResult('Sorry, I could not audit this configuration. Please try again or provide a valid snippet.');
+              }
+            } catch (error) {
+              console.error('Error fetching config audit from Gemini API:', error);
+              setConfigAuditResult('An error occurred while auditing the configuration. Please try again.');
+            } finally {
+              setConfigLoading(false);
+            }
+          };
 
-  // Function to add/remove a message from favorites
-  const toggleFavorite = async (message) => {
-    if (!db || !userId) {
-      console.warn("Firestore not ready for favorite operation.");
-      return;
-    }
+          // Function to add/remove a message from favorites
+          const toggleFavorite = async (message) => {
+            if (!db || !userId) {
+              console.warn("Firestore not ready for favorite operation. Please ensure Firebase is configured correctly.");
+              return;
+            }
 
-    const favoriteDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/favorites`, message.id);
-    const chatMessageDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/chat_history`, message.id);
+            const favoriteDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/favorites`, message.id);
+            const chatMessageDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/chat_history`, message.id);
 
-    if (favorites.some(fav => fav.id === message.id)) {
-      // Remove from favorites
-      try {
-        await deleteDoc(favoriteDocRef);
-        await setDoc(chatMessageDocRef, { isFavorite: false }, { merge: true }); // Update chat message status
-        console.log("Removed from favorites:", message.id);
-      } catch (error) {
-        console.error("Error removing favorite:", error);
-      }
-    } else {
-      // Add to favorites
-      try {
-        await setDoc(favoriteDocRef, {
-          messageId: message.id,
-          text: message.text,
-          sender: message.sender,
-          timestamp: message.timestamp || serverTimestamp(), // Use existing timestamp or new one
-          favoritedAt: serverTimestamp()
-        });
-        await setDoc(chatMessageDocRef, { isFavorite: true }, { merge: true }); // Update chat message status
-        console.log("Added to favorites:", message.id);
-      } catch (error) {
-        console.error("Error adding favorite:", error);
-      }
-    }
-  };
+            if (favorites.some(fav => fav.id === message.id)) {
+              // Remove from favorites
+              try {
+                await deleteDoc(favoriteDocRef);
+                await setDoc(chatMessageDocRef, { isFavorite: false }, { merge: true }); // Update chat message status
+                console.log("Removed from favorites:", message.id);
+              } catch (error) {
+                console.error("Error removing favorite:", error);
+              }
+            } else {
+              // Add to favorites
+              try {
+                await setDoc(favoriteDocRef, {
+                  messageId: message.id,
+                  text: message.text,
+                  sender: message.sender,
+                  timestamp: message.timestamp || serverTimestamp(), // Use existing timestamp or new one
+                  favoritedAt: serverTimestamp()
+                });
+                await setDoc(chatMessageDocRef, { isFavorite: true }, { merge: true }); // Update chat message status
+                console.log("Added to favorites:", message.id);
+              } catch (error) {
+                console.error("Error adding favorite:", error);
+              }
+            }
+          };
 
-  // Function to clear all chat messages from Firestore
-  const clearChat = async () => {
-    if (!db || !userId) {
-      console.warn("Firestore not ready for clear chat operation.");
-      return;
-    }
+          // Function to clear all chat messages from Firestore
+          const clearChat = async () => {
+            if (!db || !userId) {
+              console.warn("Firestore not ready for clear chat operation. Please ensure Firebase is configured correctly.");
+              // If persistence is off, just clear local messages
+              setMessages([]);
+              return;
+            }
 
-    setShowClearChatConfirm(true); // Show confirmation modal
-  };
+            setShowClearChatConfirm(true); // Show confirmation modal
+          };
 
-  const confirmClearChat = async () => {
-    setShowClearChatConfirm(false); // Hide modal
+          const confirmClearChat = async () => {
+            setShowClearChatConfirm(false); // Hide modal
 
-    setLoading(true); // Show loading indicator while clearing
-    try {
-      const q = query(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`));
-      const querySnapshot = await getDocs(q);
-      const deletePromises = [];
-      querySnapshot.forEach((doc) => {
-        deletePromises.push(deleteDoc(doc.ref));
-      });
-      await Promise.all(deletePromises);
-      setMessages([]); // Clear local state immediately
-      console.log("Chat history cleared successfully.");
-    } catch (error) {
-      console.error("Error clearing chat history:", error);
-      // Optionally add an error message to the chat
-      setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: 'Error clearing chat history. Please try again.' }]);
-    } finally {
-      setLoading(false);
-    }
-  };
+            setLoading(true); // Show loading indicator while clearing
+            try {
+              const q = query(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`));
+              const querySnapshot = await getDocs(q);
+              const deletePromises = [];
+              querySnapshot.forEach((doc) => {
+                deletePromises.push(deleteDoc(doc.ref));
+              });
+              await Promise.all(deletePromises);
+              setMessages([]); // Clear local state immediately
+              console.log("Chat history cleared successfully.");
+            } catch (error) {
+              console.error("Error clearing chat history:", error);
+              // Optionally add an error message to the chat
+              setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: 'Error clearing chat history. Please try again.' }]);
+            } finally {
+              setLoading(false);
+            }
+          };
 
-  const cancelClearChat = () => {
-    setShowClearChatConfirm(false); // Hide modal
-  };
+          const cancelClearChat = () => {
+            setShowClearChatConfirm(false); // Hide modal
+          };
 
 
-  // Handle Enter key press in the main chat input field
-  const handleChatKeyPress = (e) => {
-    if (e.key === 'Enter' && !loading) {
-      sendChatMessage();
-    }
-  };
+          // Handle Enter key press in the main chat input field
+          const handleChatKeyPress = (e) => {
+            if (e.key === 'Enter' && !loading) {
+              sendChatMessage();
+            }
+          };
 
-  return (
-    <div className="flex flex-col h-screen bg-gray-900 font-inter text-gray-100">
-      {/* Custom CSS for animations and scrollbars */}
-      <style>
-        {`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
+          return (
+            <div className="flex flex-col h-screen bg-gray-900 font-inter text-gray-100">
+              {/* Custom CSS for animations and scrollbars */}
+              <style>
+                {`
+                @keyframes fadeInUp {
+                  from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                  }
+                  to {
+                    opacity: 1;
+                    transform: translateY(0);
+                  }
+                }
 
-        .fade-in-up {
-          animation: fadeInUp 0.3s ease-out forwards;
-        }
+                .fade-in-up {
+                  animation: fadeInUp 0.3s ease-out forwards;
+                }
 
-        /* Custom Scrollbar for Webkit browsers */
-        ::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
+                /* Custom Scrollbar for Webkit browsers */
+                ::-webkit-scrollbar {
+                  width: 8px;
+                  height: 8px;
+                }
 
-        ::-webkit-scrollbar-track {
-          background: #374151; /* gray-700 */
-          border-radius: 10px;
-        }
+                ::-webkit-scrollbar-track {
+                  background: #374151; /* gray-700 */
+                  border-radius: 10px;
+                }
 
-        ::-webkit-scrollbar-thumb {
-          background: #10B981; /* green-500 */
-          border-radius: 10px;
-          border: 2px solid #374151; /* gray-700 */
-        }
+                ::-webkit-scrollbar-thumb {
+                  background: #10B981; /* green-500 */
+                  border-radius: 10px;
+                  border: 2px solid #374151; /* gray-700 */
+                }
 
-        ::-webkit-scrollbar-thumb:hover {
-          background: #059669; /* darker green */
-        }
+                ::-webkit-scrollbar-thumb:hover {
+                  background: #059669; /* darker green */
+                }
 
-        /* Star icon styling */
-        .star-icon {
-          cursor: pointer;
-          font-size: 1.2em;
-          transition: color 0.2s ease-in-out, transform 0.2s ease-in-out;
-        }
-        .star-icon.filled {
-          color: #FFD700; /* Gold */
-        }
-        .star-icon.empty {
-          color: #6B7280; /* Gray */
-        }
-        .star-icon:hover {
-          transform: scale(1.2);
-        }
-        `}
-      </style>
+                /* Star icon styling */
+                .star-icon {
+                  cursor: pointer;
+                  font-size: 1.2em;
+                  transition: color 0.2s ease-in-out, transform 0.2s ease-in-out;
+                }
+                .star-icon.filled {
+                  color: #FFD700; /* Gold */
+                }
+                .star-icon.empty {
+                  color: #6B7280; /* Gray */
+                }
+                .star-icon:hover {
+                  transform: scale(1.2);
+                }
+                `}
+              </style>
 
-      {/* Header */}
-      <header className="bg-gray-800 p-4 shadow-lg rounded-b-xl border-b-2 border-green-500">
-        <h1 className="text-3xl font-extrabold text-center text-green-400 drop-shadow-md">Cisco CLI Assistant</h1>
-        <p className="text-center text-sm mt-1 text-gray-400">Your go-to guide for network commands</p>
-        <p className="text-center text-xs mt-2 text-gray-500">Made by: Eng. Thu-alfaqar Salah</p>
-        <p className="text-center text-xs text-gray-500">LinkedIn: <a href="https://www.linkedin.com/in/thu-al-faqar-salah-31b920282/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Thu-al-faqar Salah</a></p>
-        <p className="text-center text-xs text-gray-500">Email: <a href="mailto:Zu.alfaqar.salah@gmail.com" className="text-blue-400 hover:underline">Zu.alfaqar.salah@gmail.com</a></p>
-        {userId && <p className="text-center text-xs mt-2 text-gray-500">User ID: {userId}</p>}
-      </header>
+              {/* Header */}
+              <header className="bg-gray-800 p-4 shadow-lg rounded-b-xl border-b-2 border-green-500">
+                <h1 className="text-3xl font-extrabold text-center text-green-400 drop-shadow-md">Cisco CLI Assistant</h1>
+                <p className="text-center text-sm mt-1 text-gray-400">Your go-to guide for network commands</p>
+                <p className="text-center text-xs mt-2 text-gray-500">Made by: Eng. Thu-alfaqar Salah</p>
+                <p className="text-center text-xs text-gray-500">LinkedIn: <a href="https://www.linkedin.com/in/thu-al-faqar-salah-31b920282/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Thu-al-faqar Salah</a></p>
+                <p className="text-center text-xs text-gray-500">Email: <a href="mailto:Zu.alfaqar.salah@gmail.com" className="text-blue-400 hover:underline">Zu.alfaqar.salah@gmail.com</a></p>
+                {userId && <p className="text-center text-xs mt-2 text-gray-500">User ID: {userId}</p>}
+              </header>
 
-      {/* Tab Navigation */}
-      <nav className="bg-gray-800 p-2 flex justify-center space-x-4 border-b border-gray-700">
-        <button
-          onClick={() => setActiveTab('chat')}
-          className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
-            activeTab === 'chat' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
-        >
-          CLI Chat
-        </button>
-        <button
-          onClick={() => setActiveTab('error')}
-          className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
-            activeTab === 'error' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
-        >
-          Error Resolution
-        </button>
-        <button
-          onClick={() => setActiveTab('audit')}
-          className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
-            activeTab === 'audit' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
-        >
-          Config Audit
-        </button>
-        <button
-          onClick={() => setActiveTab('favorites')}
-          className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
-            activeTab === 'favorites' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
-        >
-          Favorites ({favorites.length})
-        </button>
-      </nav>
-
-      {/* Main Content Area - Conditional Rendering based on activeTab */}
-      {activeTab === 'chat' && (
-        <>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900 bg-grid-pattern">
-            {messages.length === 0 && (
-              <div className="flex justify-center items-center h-full">
-                <p className="text-gray-500 text-lg animate-pulse">
-                  {isAuthReady ? "Start by asking about a Cisco command, or type '?' for instructions!" : "Loading application..."}
-                </p>
-              </div>
-            )}
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} fade-in-up`}
-              >
-                <div
-                  className={`max-w-[75%] p-4 rounded-xl shadow-lg transform transition-all duration-300 ease-in-out ${
-                    msg.sender === 'user'
-                      ? 'bg-blue-700 text-white rounded-br-none hover:scale-[1.01] active:scale-98'
-                      : 'bg-gray-700 text-gray-100 rounded-bl-none hover:scale-[1.01] active:scale-98'
+              {/* Tab Navigation */}
+              <nav className="bg-gray-800 p-2 flex justify-center space-x-4 border-b border-gray-700">
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
+                    activeTab === 'chat' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
-                  <p className="font-bold mb-1 flex items-center">
-                    {msg.sender === 'user' ? 'You' : 'CLI Bot'}
-                    {msg.fromCache && (
-                      <span className="ml-2 text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full opacity-80">
-                        Cached
-                      </span>
+                  CLI Chat
+                </button>
+                <button
+                  onClick={() => setActiveTab('error')}
+                  className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
+                    activeTab === 'error' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Error Resolution
+                </button>
+                <button
+                  onClick={() => setActiveTab('audit')}
+                  className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
+                    activeTab === 'audit' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Config Audit
+                </button>
+                <button
+                  onClick={() => setActiveTab('favorites')}
+                  className={`px-6 py-2 rounded-lg font-semibold transition duration-200 active:scale-95 ${
+                    activeTab === 'favorites' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Favorites ({favorites.length})
+                </button>
+              </nav>
+
+              {/* Main Content Area - Conditional Rendering based on activeTab */}
+              {activeTab === 'chat' && (
+                <>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900 bg-grid-pattern">
+                    {messages.length === 0 && (
+                      <div className="flex justify-center items-center h-full">
+                        <p className="text-gray-500 text-lg animate-pulse">
+                          {isAuthReady ? "Start by asking about a Cisco command, or type '?' for instructions!" : "Loading application..."}
+                        </p>
+                      </div>
                     )}
-                    {msg.sender === 'bot' && (
-                      <span
-                        className={`star-icon ml-2 ${favorites.some(fav => fav.id === msg.id) ? 'filled' : 'empty'}`}
-                        onClick={() => toggleFavorite(msg)}
-                        title={favorites.some(fav => fav.id === msg.id) ? 'Remove from Favorites' : 'Add to Favorites'}
+                    {messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} fade-in-up`}
                       >
-                        ★
-                      </span>
+                        <div
+                          className={`max-w-[75%] p-4 rounded-xl shadow-lg transform transition-all duration-300 ease-in-out ${
+                            msg.sender === 'user'
+                              ? 'bg-blue-700 text-white rounded-br-none hover:scale-[1.01] active:scale-98'
+                              : 'bg-gray-700 text-gray-100 rounded-bl-none hover:scale-[1.01] active:scale-98'
+                          }`}
+                        >
+                          <p className="font-bold mb-1 flex items-center">
+                            {msg.sender === 'user' ? 'You' : 'CLI Bot'}
+                            {msg.fromCache && (
+                              <span className="ml-2 text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full opacity-80">
+                                Cached
+                              </span>
+                            )}
+                            {msg.sender === 'bot' && (
+                              <span
+                                className={`star-icon ml-2 ${favorites.some(fav => fav.id === msg.id) ? 'filled' : 'empty'}`}
+                                onClick={() => toggleFavorite(msg)}
+                                title={favorites.some(fav => fav.id === msg.id) ? 'Remove from Favorites' : 'Add to Favorites'}
+                              >
+                                ★
+                              </span>
+                            )}
+                          </p>
+                          <div className="prose prose-sm prose-invert max-w-none break-words" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br/>') }} />
+                        </div>
+                      </div>
+                    ))}
+                    {loading && (
+                      <div className="flex justify-start fade-in-up">
+                        <div className="max-w-[75%] p-4 rounded-xl shadow-lg bg-gray-700 text-gray-100 rounded-bl-none">
+                          <p className="font-bold mb-1">CLI Bot</p>
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce mr-1"></div>
+                            <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce delay-150 mr-1"></div>
+                            <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce delay-300"></div>
+                          </div>
+                        </div>
+                      </div>
                     )}
-                  </p>
-                  <div className="prose prose-sm prose-invert max-w-none break-words" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br/>') }} />
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {/* Recent Commands Area */}
+                  {recentCommands.length > 0 && (
+                    <div className="p-4 bg-gray-800 border-t border-gray-700 shadow-inner rounded-t-xl">
+                      <p className="text-sm font-semibold text-gray-400 mb-2">Recent Commands:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {recentCommands.map((command, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleChatKeyPress({ key: 'Enter', target: { value: command }})}
+                            className="px-4 py-2 bg-gray-700 text-green-400 text-sm rounded-full hover:bg-gray-600 transition duration-200 shadow-md transform hover:scale-105 active:scale-95"
+                          >
+                            {command}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Input Area for Chat */}
+                  <div className="p-4 bg-gray-800 border-t border-gray-700 shadow-inner rounded-t-xl">
+                    <div className="flex space-x-3">
+                      <input
+                        type="text"
+                        className="flex-1 p-3 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500"
+                        placeholder="e.g., show ip route"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyPress={handleChatKeyPress}
+                        disabled={loading || !isAuthReady}
+                      />
+                      <button
+                        onClick={() => sendChatMessage()}
+                        className={`px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
+                          (loading || !isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
+                        }`}
+                        disabled={loading || !isAuthReady}
+                      >
+                        Send
+                      </button>
+                      <button
+                        onClick={clearChat}
+                        className={`px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
+                          (!isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
+                        }`}
+                        disabled={!isAuthReady}
+                      >
+                        Clear Chat
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'error' && (
+                <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
+                  <h2 className="text-2xl font-bold text-green-400 mb-4">Cisco Error Resolution</h2>
+                  <p className="text-gray-400 mb-4">Paste a Cisco error message below to get an explanation and troubleshooting steps, or type '?' for instructions.</p>
+                  <textarea
+                    className="flex-1 p-4 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500 mb-4"
+                    placeholder="Paste your Cisco error message here (e.g., %OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached)"
+                    value={errorMessageInput}
+                    onChange={(e) => setErrorMessageInput(e.target.value)}
+                    rows="8"
+                    disabled={!isAuthReady}
+                  ></textarea>
+                  <button
+                    onClick={sendErrorMessage}
+                    className={`px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
+                      (errorLoading || !isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                    disabled={errorLoading || !isAuthReady}
+                  >
+                    {errorLoading ? 'Processing Error...' : 'Resolve Error'}
+                  </button>
+                  {errorResolutionResult && (
+                    <div className="mt-6 p-4 bg-gray-700 rounded-lg shadow-md text-gray-100 prose prose-sm prose-invert max-w-none break-words">
+                      <h3 className="text-xl font-semibold text-green-300 mb-2">Resolution:</h3>
+                      <div dangerouslySetInnerHTML={{ __html: errorResolutionResult.replace(/\n/g, '<br/>') }} />
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start fade-in-up">
-                <div className="max-w-[75%] p-4 rounded-xl shadow-lg bg-gray-700 text-gray-100 rounded-bl-none">
-                  <p className="font-bold mb-1">CLI Bot</p>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce mr-1"></div>
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce delay-150 mr-1"></div>
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce delay-300"></div>
+              )}
+
+              {activeTab === 'audit' && (
+                <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
+                  <h2 className="text-2xl font-bold text-green-400 mb-4">Cisco Configuration Audit</h2>
+                  <p className="text-gray-400 mb-4">Paste a Cisco configuration snippet below for an audit of best practices and potential issues, or type '?' for instructions.</p>
+                  <textarea
+                    className="flex-1 p-4 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500 mb-4"
+                    placeholder="Paste your Cisco configuration snippet here (e.g., interface GigabitEthernet0/1&#10; ip address 192.168.1.1 255.255.255.0&#10; no shutdown)"
+                    value={configSnippetInput}
+                    onChange={(e) => setConfigSnippetInput(e.target.value)}
+                    rows="8"
+                    disabled={!isAuthReady}
+                  ></textarea>
+                  <button
+                    onClick={sendConfigSnippet}
+                    className={`px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
+                      (configLoading || !isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                    disabled={configLoading || !isAuthReady}
+                  >
+                    {configLoading ? 'Auditing Config...' : 'Audit Configuration'}
+                  </button>
+                  {configAuditResult && (
+                    <div className="mt-6 p-4 bg-gray-700 rounded-lg shadow-md text-gray-100 prose prose-sm prose-invert max-w-none break-words">
+                      <h3 className="text-xl font-semibold text-green-300 mb-2">Audit Results:</h3>
+                      <div dangerouslySetInnerHTML={{ __html: configAuditResult.replace(/\n/g, '<br/>') }} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'favorites' && (
+                <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
+                  <h2 className="text-2xl font-bold text-green-400 mb-4">Your Favorite Responses</h2>
+                  <p className="text-gray-400 mb-4">Here you'll find all the bot responses you've marked as favorites.</p>
+                  {!isAuthReady ? (
+                     <div className="flex justify-center items-center h-full text-gray-500 text-lg animate-pulse">Loading favorites...</div>
+                  ) : favorites.length === 0 ? (
+                    <div className="flex justify-center items-center h-full text-gray-500 text-lg">No favorites added yet. Star a bot response in the CLI Chat!</div>
+                  ) : (
+                    <div className="overflow-y-auto space-y-4">
+                      {favorites.map((fav) => (
+                        <div
+                          key={fav.id}
+                          className="p-4 rounded-xl shadow-lg bg-gray-700 text-gray-100 relative"
+                        >
+                          <p className="font-bold mb-1 flex items-center">
+                            CLI Bot
+                            <span
+                              className="star-icon ml-2 filled absolute top-4 right-4"
+                              onClick={() => toggleFavorite(fav)}
+                              title="Remove from Favorites"
+                            >
+                              ★
+                            </span>
+                          </p>
+                          <div className="prose prose-sm prose-invert max-w-none break-words" dangerouslySetInnerHTML={{ __html: fav.text.replace(/\n/g, '<br/>') }} />
+                          <p className="text-xs text-gray-500 mt-2">Favorited: {fav.favoritedAt?.toDate().toLocaleString() || 'N/A'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Confirmation Modal for Clear Chat */}
+              {showClearChatConfirm && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                  <div className="bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
+                    <h3 className="text-xl font-bold text-red-400 mb-4">Confirm Clear Chat</h3>
+                    <p className="text-gray-300 mb-6">Are you sure you want to clear ALL chat messages? This action cannot be undone.</p>
+                    <div className="flex justify-end space-x-4">
+                      <button
+                        onClick={cancelClearChat}
+                        className="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-200"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={confirmClearChat}
+                        className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition duration-200"
+                      >
+                        Clear All
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Recent Commands Area */}
-          {recentCommands.length > 0 && (
-            <div className="p-4 bg-gray-800 border-t border-gray-700 shadow-inner rounded-t-xl">
-              <p className="text-sm font-semibold text-gray-400 mb-2">Recent Commands:</p>
-              <div className="flex flex-wrap gap-2">
-                {recentCommands.map((command, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleChatKeyPress({ key: 'Enter', target: { value: command }})}
-                    className="px-4 py-2 bg-gray-700 text-green-400 text-sm rounded-full hover:bg-gray-600 transition duration-200 shadow-md transform hover:scale-105 active:scale-95"
-                  >
-                    {command}
-                  </button>
-                ))}
-              </div>
+              )}
             </div>
-          )}
+          );
+        };
 
-          {/* Input Area for Chat */}
-          <div className="p-4 bg-gray-800 border-t border-gray-700 shadow-inner rounded-t-xl">
-            <div className="flex space-x-3">
-              <input
-                type="text"
-                className="flex-1 p-3 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500"
-                placeholder="e.g., show ip route"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleChatKeyPress}
-                disabled={loading || !isAuthReady}
-              />
-              <button
-                onClick={() => sendChatMessage()}
-                className={`px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
-                  (loading || !isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
-                }`}
-                disabled={loading || !isAuthReady}
-              >
-                Send
-              </button>
-              <button
-                onClick={clearChat}
-                className={`px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
-                  (!isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
-                }`}
-                disabled={!isAuthReady}
-              >
-                Clear Chat
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {activeTab === 'error' && (
-        <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
-          <h2 className="text-2xl font-bold text-green-400 mb-4">Cisco Error Resolution</h2>
-          <p className="text-gray-400 mb-4">Paste a Cisco error message below to get an explanation and troubleshooting steps, or type '?' for instructions.</p>
-          <textarea
-            className="flex-1 p-4 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500 mb-4"
-            placeholder="Paste your Cisco error message here (e.g., %OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached)"
-            value={errorMessageInput}
-            onChange={(e) => setErrorMessageInput(e.target.value)}
-            rows="8"
-            disabled={!isAuthReady}
-          ></textarea>
-          <button
-            onClick={sendErrorMessage}
-            className={`px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
-              (errorLoading || !isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
-            }`}
-            disabled={errorLoading || !isAuthReady}
-          >
-            {errorLoading ? 'Processing Error...' : 'Resolve Error'}
-          </button>
-          {errorResolutionResult && (
-            <div className="mt-6 p-4 bg-gray-700 rounded-lg shadow-md text-gray-100 prose prose-sm prose-invert max-w-none break-words">
-              <h3 className="text-xl font-semibold text-green-300 mb-2">Resolution:</h3>
-              <div dangerouslySetInnerHTML={{ __html: errorResolutionResult.replace(/\n/g, '<br/>') }} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'audit' && (
-        <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
-          <h2 className="text-2xl font-bold text-green-400 mb-4">Cisco Configuration Audit</h2>
-          <p className="text-gray-400 mb-4">Paste a Cisco configuration snippet below for an audit of best practices and potential issues, or type '?' for instructions.</p>
-          <textarea
-            className="flex-1 p-4 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500 mb-4"
-            placeholder="Paste your Cisco configuration snippet here (e.g., interface GigabitEthernet0/1&#10; ip address 192.168.1.1 255.255.255.0&#10; no shutdown)"
-            value={configSnippetInput}
-            onChange={(e) => setConfigSnippetInput(e.target.value)}
-            rows="8"
-            disabled={!isAuthReady}
-          ></textarea>
-          <button
-            onClick={sendConfigSnippet}
-            className={`px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
-              (configLoading || !isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
-            }`}
-            disabled={configLoading || !isAuthReady}
-          >
-            {configLoading ? 'Auditing Config...' : 'Audit Configuration'}
-          </button>
-          {configAuditResult && (
-            <div className="mt-6 p-4 bg-gray-700 rounded-lg shadow-md text-gray-100 prose prose-sm prose-invert max-w-none break-words">
-              <h3 className="text-xl font-semibold text-green-300 mb-2">Audit Results:</h3>
-              <div dangerouslySetInnerHTML={{ __html: configAuditResult.replace(/\n/g, '<br/>') }} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'favorites' && (
-        <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
-          <h2 className="text-2xl font-bold text-green-400 mb-4">Your Favorite Responses</h2>
-          <p className="text-gray-400 mb-4">Here you'll find all the bot responses you've marked as favorites.</p>
-          {!isAuthReady ? (
-             <div className="flex justify-center items-center h-full text-gray-500 text-lg animate-pulse">Loading favorites...</div>
-          ) : favorites.length === 0 ? (
-            <div className="flex justify-center items-center h-full text-gray-500 text-lg">No favorites added yet. Star a bot response in the CLI Chat!</div>
-          ) : (
-            <div className="overflow-y-auto space-y-4">
-              {favorites.map((fav) => (
-                <div
-                  key={fav.id}
-                  className="p-4 rounded-xl shadow-lg bg-gray-700 text-gray-100 relative"
-                >
-                  <p className="font-bold mb-1 flex items-center">
-                    CLI Bot
-                    <span
-                      className="star-icon ml-2 filled absolute top-4 right-4"
-                      onClick={() => toggleFavorite(fav)}
-                      title="Remove from Favorites"
-                    >
-                      ★
-                    </span>
-                  </p>
-                  <div className="prose prose-sm prose-invert max-w-none break-words" dangerouslySetInnerHTML={{ __html: fav.text.replace(/\n/g, '<br/>') }} />
-                  <p className="text-xs text-gray-500 mt-2">Favorited: {fav.favoritedAt?.toDate().toLocaleString() || 'N/A'}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Confirmation Modal for Clear Chat */}
-      {showClearChatConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-red-400 mb-4">Confirm Clear Chat</h3>
-            <p className="text-gray-300 mb-6">Are you sure you want to clear ALL chat messages? This action cannot be undone.</p>
-            <div className="flex justify-end space-x-4">
-              <button
-                onClick={cancelClearChat}
-                className="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmClearChat}
-                className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition duration-200"
-              >
-                Clear All
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
+        // Render the App component
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
