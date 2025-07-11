@@ -258,7 +258,8 @@
               timestamp: serverTimestamp(), // Will be null if db is null
               isFavorite: false
             };
-            const userMessageForApi = { role: 'user', parts: [{ text: userMessageContent }] };
+            // The current user message to be sent to the API
+            const currentUserMessageForApi = { role: 'user', parts: [{ text: userMessageContent }] };
 
 
             setLoading(true);
@@ -325,16 +326,21 @@
               Be concise and direct, but thorough in your explanations and guidance.`;
 
               // Build chat history for the API call (limit to last 10 for token management)
-              const chatHistoryForApi = [
-                { role: 'user', parts: [{ text: systemInstruction }] },
-                ...messages.slice(-10).map(msg => ({
+              // Filter out any messages that don't have a 'sender' or 'text' to prevent API errors
+              const filteredMessages = messages.filter(msg => msg.sender && msg.text);
+
+              const chatHistoryForApi = filteredMessages.slice(-10).map(msg => ({
                   role: msg.sender === 'user' ? 'user' : 'model',
                   parts: [{ text: msg.text }]
-                })),
-                userMessageForApi
-              ];
+              }));
 
-              const payload = { contents: chatHistoryForApi };
+              // Add the current user message
+              chatHistoryForApi.push(currentUserMessageForApi);
+
+              const payload = {
+                contents: chatHistoryForApi,
+                systemInstruction: { parts: [{ text: systemInstruction }] } // Correct way to send system instruction
+              };
               const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
@@ -346,11 +352,18 @@
 
               const result = await response.json();
 
+              // Log the full result for debugging
+              console.log("Gemini API Response:", result);
+
               let botResponseText = 'Sorry, I could not get a response. Please try again.';
               if (result.candidates && result.candidates.length > 0 &&
                   result.candidates[0].content && result.candidates[0].content.parts &&
                   result.candidates[0].content.parts.length > 0) {
                 botResponseText = result.candidates[0].content.parts[0].text;
+              } else if (result.error) {
+                 // Log specific API error if available
+                 console.error("Gemini API Error details:", result.error);
+                 botResponseText = `Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`;
               }
 
               const botMessageForDb = {
@@ -461,10 +474,16 @@
 
               const result = await response.json();
 
+              // Log the full result for debugging
+              console.log("Gemini API Response (Error Resolution):", result);
+
               if (result.candidates && result.candidates.length > 0 &&
                   result.candidates[0].content && result.candidates[0].content.parts &&
                   result.candidates[0].content.parts.length > 0) {
                 setErrorResolutionResult(result.candidates[0].content.parts[0].text);
+              } else if (result.error) {
+                 console.error("Gemini API Error details (Error Resolution):", result.error);
+                 setErrorResolutionResult(`Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`);
               } else {
                 setErrorResolutionResult('Sorry, I could not interpret this error. Please try again or provide more context.');
               }
@@ -539,10 +558,16 @@
 
               const result = await response.json();
 
+              // Log the full result for debugging
+              console.log("Gemini API Response (Config Audit):", result);
+
               if (result.candidates && result.candidates.length > 0 &&
                   result.candidates[0].content && result.candidates[0].content.parts &&
                   result.candidates[0].content.parts.length > 0) {
                 setConfigAuditResult(result.candidates[0].content.parts[0].text);
+              } else if (result.error) {
+                 console.error("Gemini API Error details (Config Audit):", result.error);
+                 setConfigAuditResult(`Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`);
               } else {
                 setConfigAuditResult('Sorry, I could not audit this configuration. Please try again or provide a valid snippet.');
               }
