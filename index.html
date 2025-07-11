@@ -53,8 +53,11 @@
         };
 
         // This warning should now disappear if your config is correct.
-        if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.includes("REPLACE_WITH_YOUR_")) {
-            console.warn("Firebase API Key is missing or is a placeholder. Firebase features (chat history, favorites) will not work until you update FIREBASE_CONFIG with your actual project details.");
+        if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.includes("REPLACE_WITH_YOUR_") ||
+            !FIREBASE_CONFIG.projectId || FIREBASE_CONFIG.projectId.includes("REPLACE_WITH_YOUR_") ||
+            !FIREBASE_CONFIG.authDomain || FIREBASE_CONFIG.authDomain.includes("REPLACE_WITH_YOUR_")) {
+            console.warn("Firebase configuration is incomplete or invalid. Please update FIREBASE_CONFIG with your actual project details (apiKey, projectId, authDomain, etc.). Firebase features (chat history, favorites) will be disabled.");
+            console.log("Current FIREBASE_CONFIG being used:", FIREBASE_CONFIG); // Log current config for debugging
         }
     </script>
 </head>
@@ -114,9 +117,11 @@
             let authInstance;
 
             try {
-                // Check for valid API key before initializing Firebase
-                if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("REPLACE_WITH_YOUR_") || !firebaseConfig.projectId || firebaseConfig.projectId.includes("REPLACE_WITH_YOUR_")) {
-                    console.error("Firebase configuration is incomplete or invalid. Please update FIREBASE_CONFIG with your actual project details (apiKey, projectId, etc.). Firebase features (chat history, favorites) will be disabled.");
+                // Check for valid API key, projectId, and authDomain before initializing Firebase
+                if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("REPLACE_WITH_YOUR_") ||
+                    !firebaseConfig.projectId || firebaseConfig.projectId.includes("REPLACE_WITH_YOUR_") ||
+                    !firebaseConfig.authDomain || firebaseConfig.authDomain.includes("REPLACE_WITH_YOUR_")) {
+                    console.error("Firebase configuration is incomplete or invalid. Please update FIREBASE_CONFIG with your actual project details (apiKey, projectId, authDomain, etc.). Firebase features (chat history, favorites) will be disabled.");
                     setIsAuthReady(true); // Allow UI to load even without persistence
                     return; // Stop useEffect here
                 }
@@ -498,7 +503,7 @@
 
               **Use Markdown for maximum visual impact and highlighting:**
               -   Use **bold text** for important keywords, configuration elements, and crucial details.
-              -   **Crucially, wrap ALL configuration lines, command examples, and suggested commands in multi-line code blocks (\`\`\`\n...\n\`\`\`) to make them stand out with a distinct background and monospace font.**
+              -   **Crucially, wrap ALL configuration lines, command examples, and suggested commands in multi-line code blocks (\`\`\`\n...\`\`\`) to make them stand out with a distinct background and monospace font.**
               -   Use \`backticks\` for very short inline commands or specific values within a sentence.
               -   Use bullet points or numbered lists for findings and suggestions to improve readability.
 
