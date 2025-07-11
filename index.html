@@ -30,6 +30,9 @@ const App = () => {
   // State for Favorites Tab
   const [favorites, setFavorites] = useState([]);
 
+  // State for confirmation modal
+  const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
+
   const messagesEndRef = useRef(null);
 
   // Firebase Initialization and Authentication
@@ -139,13 +142,32 @@ const App = () => {
     if (commandToSearch.trim() === '' || !db || !userId) return; // Ensure Firebase is ready
 
     const userMessageContent = commandToSearch.trim();
+
+    // Handle '?' input for instructions
+    if (userMessageContent === '?') {
+      const instructionMessage = {
+        sender: 'bot',
+        text: `### How to use CLI Chat:
+- Ask about specific Cisco CLI commands (e.g., "**What is \`show ip route\`?**").
+- Ask follow-up questions (e.g., "What about GigabitEthernet0/1?").
+- Get help configuring something (e.g., "**How do I configure OSPF?**").
+- Describe a network problem for guided troubleshooting (e.g., "**My OSPF neighbors are down**").
+- Star a bot response (★) to save it to your Favorites tab.`,
+        timestamp: serverTimestamp(),
+        isFavorite: false,
+        fromCache: false // This is a generated instruction, not from API or cache
+      };
+      await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), instructionMessage);
+      setInput('');
+      return;
+    }
+
     const userMessageForDb = {
       sender: 'user',
       text: userMessageContent,
       timestamp: serverTimestamp(),
-      isFavorite: false // User messages can't be favorited
+      isFavorite: false
     };
-    // Define userMessage in the format expected by the API
     const userMessageForApi = { role: 'user', parts: [{ text: userMessageContent }] };
 
 
@@ -163,7 +185,6 @@ const App = () => {
 
     setInput('');
 
-    // --- Basic Caching: Check localStorage first ---
     const cachedResponse = localStorage.getItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`);
     if (cachedResponse) {
       const botResponseText = JSON.parse(cachedResponse).text;
@@ -172,7 +193,7 @@ const App = () => {
         text: botResponseText,
         timestamp: serverTimestamp(),
         fromCache: true,
-        isFavorite: false // Will be updated if user favorites it
+        isFavorite: false
       };
       try {
         await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
@@ -204,14 +225,13 @@ const App = () => {
       Do NOT handle error message interpretation or configuration review in this chat mode. Direct users to the appropriate tabs for those specific tasks.
       Be concise and direct, but thorough in your explanations and guidance.`;
 
-      // Build chat history for the API call (limit to last 10 for token management)
       const chatHistoryForApi = [
         { role: 'user', parts: [{ text: systemInstruction }] },
         ...messages.slice(-10).map(msg => ({
           role: msg.sender === 'user' ? 'user' : 'model',
           parts: [{ text: msg.text }]
         })),
-        userMessageForApi // Current user message
+        userMessageForApi
       ];
 
       const payload = { contents: chatHistoryForApi };
@@ -240,14 +260,12 @@ const App = () => {
         isFavorite: false
       };
 
-      // Add bot message to Firestore
       try {
         await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
       } catch (dbError) {
         console.error("Error adding bot message to Firestore:", dbError);
       }
 
-      // Cache response if it's a direct command explanation
       if (botResponseText.includes('**Command:**') && botResponseText.includes('**Syntax:**')) {
            localStorage.setItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`, JSON.stringify({ text: botResponseText }));
       }
@@ -274,6 +292,18 @@ const App = () => {
   // Function to send error message to Gemini API
   const sendErrorMessage = async () => {
     if (errorMessageInput.trim() === '' || !db || !userId) return;
+
+    const inputContent = errorMessageInput.trim();
+
+    // Handle '?' input for instructions
+    if (inputContent === '?') {
+      setErrorResolutionResult(`### How to use Error Resolution:
+- **Paste a full Cisco error message** (e.g., \`%OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached\`).
+- The bot will explain its meaning, common causes, and provide specific resolution steps.
+- Focus on providing the exact error message for best results.`);
+      setErrorMessageInput('');
+      return;
+    }
 
     setErrorResolutionResult('');
     setErrorLoading(true);
@@ -304,7 +334,7 @@ const App = () => {
 
       Error Message:
       \`\`\`
-      ${errorMessageInput.trim()}
+      ${inputContent}
       \`\`\`
       `;
 
@@ -340,6 +370,19 @@ const App = () => {
   const sendConfigSnippet = async () => {
     if (configSnippetInput.trim() === '' || !db || !userId) return;
 
+    const inputContent = configSnippetInput.trim();
+
+    // Handle '?' input for instructions
+    if (inputContent === '?') {
+      setConfigAuditResult(`### How to use Config Audit:
+- **Paste a Cisco configuration snippet** into the text area.
+- The bot will audit it for common misconfigurations and suggest best practices for optimization.
+- The report will be brief, highlighted, and easy to read.
+- Focus on providing relevant configuration sections.`);
+      setConfigSnippetInput('');
+      return;
+    }
+
     setConfigAuditResult('');
     setConfigLoading(true);
 
@@ -369,7 +412,7 @@ const App = () => {
 
       Configuration Snippet:
       \`\`\`
-      ${configSnippetInput.trim()}
+      ${inputContent}
       \`\`\`
       `;
 
@@ -437,6 +480,44 @@ const App = () => {
       }
     }
   };
+
+  // Function to clear all chat messages from Firestore
+  const clearChat = async () => {
+    if (!db || !userId) {
+      console.warn("Firestore not ready for clear chat operation.");
+      return;
+    }
+
+    setShowClearChatConfirm(true); // Show confirmation modal
+  };
+
+  const confirmClearChat = async () => {
+    setShowClearChatConfirm(false); // Hide modal
+
+    setLoading(true); // Show loading indicator while clearing
+    try {
+      const q = query(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`));
+      const querySnapshot = await getDocs(q);
+      const deletePromises = [];
+      querySnapshot.forEach((doc) => {
+        deletePromises.push(deleteDoc(doc.ref));
+      });
+      await Promise.all(deletePromises);
+      setMessages([]); // Clear local state immediately
+      console.log("Chat history cleared successfully.");
+    } catch (error) {
+      console.error("Error clearing chat history:", error);
+      // Optionally add an error message to the chat
+      setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: 'Error clearing chat history. Please try again.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelClearChat = () => {
+    setShowClearChatConfirm(false); // Hide modal
+  };
+
 
   // Handle Enter key press in the main chat input field
   const handleChatKeyPress = (e) => {
@@ -508,6 +589,9 @@ const App = () => {
       <header className="bg-gray-800 p-4 shadow-lg rounded-b-xl border-b-2 border-green-500">
         <h1 className="text-3xl font-extrabold text-center text-green-400 drop-shadow-md">Cisco CLI Assistant</h1>
         <p className="text-center text-sm mt-1 text-gray-400">Your go-to guide for network commands</p>
+        <p className="text-center text-xs mt-2 text-gray-500">Made by: Eng. Thu-alfaqar Salah</p>
+        <p className="text-center text-xs text-gray-500">LinkedIn: <a href="https://www.linkedin.com/in/thu-al-faqar-salah-31b920282/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Thu-al-faqar Salah</a></p>
+        <p className="text-center text-xs text-gray-500">Email: <a href="mailto:Zu.alfaqar.salah@gmail.com" className="text-blue-400 hover:underline">Zu.alfaqar.salah@gmail.com</a></p>
         {userId && <p className="text-center text-xs mt-2 text-gray-500">User ID: {userId}</p>}
       </header>
 
@@ -554,7 +638,7 @@ const App = () => {
             {messages.length === 0 && (
               <div className="flex justify-center items-center h-full">
                 <p className="text-gray-500 text-lg animate-pulse">
-                  {isAuthReady ? "Start by asking about a Cisco command!" : "Loading application..."}
+                  {isAuthReady ? "Start by asking about a Cisco command, or type '?' for instructions!" : "Loading application..."}
                 </p>
               </div>
             )}
@@ -645,6 +729,15 @@ const App = () => {
               >
                 Send
               </button>
+              <button
+                onClick={clearChat}
+                className={`px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition duration-200 transform hover:scale-105 active:scale-98 active:ring-offset-0 ${
+                  (!isAuthReady) ? 'opacity-60 cursor-not-allowed' : ''
+                }`}
+                disabled={!isAuthReady}
+              >
+                Clear Chat
+              </button>
             </div>
           </div>
         </>
@@ -653,7 +746,7 @@ const App = () => {
       {activeTab === 'error' && (
         <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
           <h2 className="text-2xl font-bold text-green-400 mb-4">Cisco Error Resolution</h2>
-          <p className="text-gray-400 mb-4">Paste a Cisco error message below to get an explanation and troubleshooting steps.</p>
+          <p className="text-gray-400 mb-4">Paste a Cisco error message below to get an explanation and troubleshooting steps, or type '?' for instructions.</p>
           <textarea
             className="flex-1 p-4 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500 mb-4"
             placeholder="Paste your Cisco error message here (e.g., %OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached)"
@@ -683,7 +776,7 @@ const App = () => {
       {activeTab === 'audit' && (
         <div className="flex-1 flex flex-col p-4 bg-gray-900 bg-grid-pattern">
           <h2 className="text-2xl font-bold text-green-400 mb-4">Cisco Configuration Audit</h2>
-          <p className="text-gray-400 mb-4">Paste a Cisco configuration snippet below for an audit of best practices and potential issues.</p>
+          <p className="text-gray-400 mb-4">Paste a Cisco configuration snippet below for an audit of best practices and potential issues, or type '?' for instructions.</p>
           <textarea
             className="flex-1 p-4 bg-gray-700 border border-gray-600 text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 placeholder-gray-500 mb-4"
             placeholder="Paste your Cisco configuration snippet here (e.g., interface GigabitEthernet0/1&#10; ip address 192.168.1.1 255.255.255.0&#10; no shutdown)"
@@ -741,6 +834,30 @@ const App = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Confirmation Modal for Clear Chat */}
+      {showClearChatConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
+            <h3 className="text-xl font-bold text-red-400 mb-4">Confirm Clear Chat</h3>
+            <p className="text-gray-300 mb-6">Are you sure you want to clear ALL chat messages? This action cannot be undone.</p>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={cancelClearChat}
+                className="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmClearChat}
+                className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition duration-200"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
