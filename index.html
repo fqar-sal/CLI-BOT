@@ -11,6 +11,11 @@
     <!-- React and ReactDOM CDNs -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Explicitly make React and ReactDOM global for Babel -->
+    <script>
+        window.React = React;
+        window.ReactDOM = ReactDOM;
+    </script>
     <!-- Babel Standalone CDN for JSX compilation in browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Firebase CDNs -->
@@ -325,7 +330,7 @@
               ];
 
               const payload = { contents: chatHistoryForApi };
-              const apiKey = ""; // Canvas will provide this key at runtime
+              const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
               const response = await fetch(apiUrl, {
@@ -440,7 +445,7 @@
 
               const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
               const payload = { contents: chatHistory };
-              const apiKey = ""; // Canvas will provide this key at runtime
+              const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
               const response = await fetch(apiUrl, {
@@ -518,7 +523,7 @@
 
               const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
               const payload = { contents: chatHistory };
-              const apiKey = ""; // Canvas will provide this key at runtime
+              const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
               const response = await fetch(apiUrl, {
