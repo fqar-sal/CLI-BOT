@@ -252,12 +252,12 @@
 
             // Handle '?' input for instructions (static)
             if (userMessageContent === '?') {
-              botResponseText = `### How to use CLI Chat:
-- Ask about specific Cisco CLI commands (e.g., "**What is \`show ip route\`?**").
-- Ask follow-up questions (e.g., "What about GigabitEthernet0/1?").
-- Get help configuring something (e.g., "**How do I configure OSPF?**").
-- Describe a network problem for guided troubleshooting (e.g., "**My OSPF neighbors are down**").
-- Star a bot response (★) to save it to your Favorites tab.`;
+              botResponseText = `### CLI Chat Instructions:
+- **Send The command Directly : show cdp neighbor
+- **Ask a command:** "What is \`show ip route\`?"
+- **Get help configuring:** "How to configure OSPF?"
+- **Troubleshoot:** "My BGP neighbor is down."
+- **Favorite a response:** Click the ★ icon.`;
               
               const botMessageForDb = {
                 sender: 'bot',
@@ -280,11 +280,20 @@
             // --- AI API Call for actual commands ---
             try {
               const prompt = `You are a helpful Cisco CLI Assistant. Provide a direct answer to the following query.
+              Format your response for maximum readability and visual impact in a dark terminal-like environment. Use Markdown extensively: ### for main sections, **bold text** for crucial information, and \`\`\`code blocks\`\`\` for all commands, configuration snippets, and output examples. Ensure clarity and conciseness.
+
               If the query is about a Cisco CLI command, provide:
-              **Command:** [The command itself]
-              **Syntax:** [The full syntax with parameters]
-              **When it's helpful:** [Practical scenarios/use cases]
-              **Example:**
+              ### Command
+              \`\`\`
+              [The command itself]
+              \`\`\`
+              ### Syntax
+              \`\`\`
+              [The full syntax with parameters]
+              \`\`\`
+              ### When it's helpful
+              [Practical scenarios/use cases]
+              ### Example
               \`\`\`
               [Exact output of the command as it would appear on a Cisco device, including the prompt and preserving all spacing and formatting]
               \`\`\`
@@ -347,7 +356,7 @@
                   .then(() => console.log("Bot error message added to Firestore."))
                   .catch((dbError) => console.error("Error adding bot error message to Firestore:", dbError));
               } else {
-                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...errorBotMessageForDb, timestamp: new Date() }]);
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: errorMessage, timestamp: new Date() }]);
               }
             } finally {
               setLoading(false); // Ensure loading is turned off
@@ -369,10 +378,10 @@
 
             // Handle '?' input for instructions (static)
             if (inputContent === '?') {
-              responseText = `### How to use Error Resolution:
-- **Paste a full Cisco error message** (e.g., \`%OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached\`).
-- This tab is for specific error message interpretations.
-- Focus on providing the exact error message for best results.`;
+              responseText = `### Error Resolution Instructions:
+- **Paste a Cisco error message** here.
+- Get explanation, common causes, and resolution steps.
+- Provide the **exact error message** for best results.`;
               setErrorResolutionResult(responseText);
               setErrorMessageInput('');
               setErrorLoading(false);
@@ -441,7 +450,7 @@
               console.error('Error fetching error resolution from Gemini API:', error);
               setErrorResolutionResult('An error occurred while processing the error message. Please try again.');
             } finally {
-              setErrorInput('');
+              setErrorMessageInput(''); // Clear input field
               setErrorLoading(false); // Ensure loading is turned off
               console.log("ErrorLoading set to false (after AI attempt).");
             }
@@ -460,11 +469,10 @@
 
             // Handle '?' input for instructions (static)
             if (inputContent === '?') {
-              responseText = `### How to use Config Audit:
-- **Paste a Cisco configuration snippet** into the text area.
-- This tab is for auditing configurations against best practices.
-- The report will be brief, highlighted, and easy to read.
-- Focus on providing relevant configuration sections.`;
+              responseText = `### Config Audit Instructions:
+- **Paste a Cisco config snippet** for audit.
+- Get a brief report on misconfigurations and best practices.
+- Focus on relevant configuration sections.`;
               setConfigAuditResult(responseText);
               setConfigSnippetInput('');
               setConfigLoading(false);
@@ -533,7 +541,7 @@
               console.error('Error fetching config audit from Gemini API:', error);
               setConfigAuditResult('An error occurred while auditing the configuration. Please try again.');
             } finally {
-              setConfigSnippetInput('');
+              setConfigSnippetInput(''); // Clear input field
               setConfigLoading(false); // Ensure loading is turned off
               console.log("ConfigLoading set to false (after AI attempt).");
             }
@@ -678,6 +686,39 @@
                 }
                 .star-icon:hover {
                   transform: scale(1.2);
+                }
+
+                /* Custom styling for Markdown code blocks within prose */
+                .prose pre {
+                  background-color: #1F2937; /* Darker gray for code blocks */
+                  border-left: 4px solid #34D399; /* Emerald 400 green border */
+                  padding: 1rem;
+                  border-radius: 0.5rem;
+                  overflow-x: auto;
+                  color: #A7F3D0; /* Light emerald green for code text */
+                  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace; /* Monospaced font for code */
+                  font-size: 0.9em;
+                }
+                .prose code {
+                  color: #A7F3D0; /* Light emerald green for inline code */
+                  background-color: #374151; /* Gray-700 for inline code background */
+                  padding: 0.2em 0.4em;
+                  border-radius: 0.25rem;
+                  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace; /* Monospaced font for code */
+                  font-size: 0.9em;
+                }
+                .prose h3 {
+                  color: #6EE7B7; /* Emerald 300 for headings */
+                  font-size: 1.35rem; /* Slightly larger for headings */
+                  margin-top: 1.5em;
+                  margin-bottom: 0.75em;
+                }
+                .prose strong {
+                  color: #81E6D9; /* Brighter teal for strong text */
+                }
+                .prose p, .prose li {
+                    line-height: 1.6; /* Improved line height for readability */
+                    letter-spacing: 0.01em; /* Subtle letter spacing */
                 }
                 `}
               </style>
