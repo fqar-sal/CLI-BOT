@@ -52,7 +52,6 @@
             getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, deleteDoc, getDocs
         };
 
-        // This warning should now disappear if your config is correct.
         if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.includes("REPLACE_WITH_YOUR_") ||
             !FIREBASE_CONFIG.projectId || FIREBASE_CONFIG.projectId.includes("REPLACE_WITH_YOUR_") ||
             !FIREBASE_CONFIG.authDomain || FIREBASE_CONFIG.authDomain.includes("REPLACE_WITH_YOUR_")) {
@@ -79,7 +78,7 @@
         const App = () => {
           const [messages, setMessages] = useState([]);
           const [input, setInput] = useState('');
-          const [loading, setLoading] = useState(false);
+          const [loading, setLoading] = useState(false); // Still used for general UI loading, not API specifically
           const [recentCommands, setRecentCommands] = useState([]);
           const [activeTab, setActiveTab] = useState('chat');
 
@@ -92,12 +91,12 @@
           // States for Error Resolution Tab
           const [errorMessageInput, setErrorMessageInput] = useState('');
           const [errorResolutionResult, setErrorResolutionResult] = useState('');
-          const [errorLoading, setErrorLoading] = useState(false);
+          const [errorLoading, setErrorLoading] = useState(false); // Still used for general UI loading, not API specifically
 
           // States for Config Audit Tab
           const [configSnippetInput, setConfigSnippetInput] = useState('');
           const [configAuditResult, setConfigAuditResult] = useState('');
-          const [configLoading, setConfigLoading] = useState(false);
+          const [configLoading, setConfigLoading] = useState(false); // Still used for general UI loading, not API specifically
 
           // State for Favorites Tab
           const [favorites, setFavorites] = useState([]);
@@ -223,125 +222,79 @@
 
           // Function to send a message to the Gemini API for the main chat
           const sendChatMessage = async (commandToSearch = input) => {
-            if (commandToSearch.trim() === '') return; // No need for db/userId check here, handled by disabled state
+            console.log("sendChatMessage called with:", commandToSearch);
+            if (commandToSearch.trim() === '') return;
 
             const userMessageContent = commandToSearch.trim();
+            const userMessageForDb = {
+              sender: 'user',
+              text: userMessageContent,
+              timestamp: serverTimestamp(),
+              isFavorite: false
+            };
 
-            // Handle '?' input for instructions
+            setLoading(true); // Show loading briefly for UI feedback
+            console.log("Loading set to true for chat.");
+
+            // Add user message to Firestore (asynchronously, without blocking UI)
+            if (db && userId) {
+                addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), userMessageForDb)
+                    .then(() => console.log("User message added to Firestore."))
+                    .catch((dbError) => console.error("Error adding user message to Firestore:", dbError));
+            } else {
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...userMessageForDb, timestamp: new Date() }]);
+                console.log("User message added to local state (no Firestore).");
+            }
+
+            setInput(''); // Clear input field immediately
+
+            let botResponseText = '';
+
+            // Handle '?' input for instructions (static)
             if (userMessageContent === '?') {
-              const instructionMessage = {
-                sender: 'bot',
-                text: `### How to use CLI Chat:
+              botResponseText = `### How to use CLI Chat:
 - Ask about specific Cisco CLI commands (e.g., "**What is \`show ip route\`?**").
 - Ask follow-up questions (e.g., "What about GigabitEthernet0/1?").
 - Get help configuring something (e.g., "**How do I configure OSPF?**").
 - Describe a network problem for guided troubleshooting (e.g., "**My OSPF neighbors are down**").
-- Star a bot response (★) to save it to your Favorites tab.`,
-                timestamp: serverTimestamp(), // Will be null if db is null
-                isFavorite: false,
-                fromCache: false // This is a generated instruction, not from API or cache
-              };
-              // Only add to Firestore if db and userId are available
-              if (db && userId) {
-                await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), instructionMessage);
-              } else {
-                // If persistence is off, just add to local state
-                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...instructionMessage, timestamp: new Date() }]);
-              }
-              setInput('');
-              return;
-            }
-
-            const userMessageForDb = {
-              sender: 'user',
-              text: userMessageContent,
-              timestamp: serverTimestamp(), // Will be null if db is null
-              isFavorite: false
-            };
-            // The current user message to be sent to the API
-            const currentUserMessageForApi = { role: 'user', parts: [{ text: userMessageContent }] };
-
-
-            setLoading(true);
-
-            // Add user message to Firestore if db and userId are available
-            if (db && userId) {
-                try {
-                    await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), userMessageForDb);
-                } catch (dbError) {
-                    console.error("Error adding user message to Firestore:", dbError);
-                    setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: 'Error saving your message. Please try again.' }]);
-                    setLoading(false);
-                    return;
-                }
-            } else {
-                // If persistence is off, just add to local state
-                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...userMessageForDb, timestamp: new Date() }]);
-            }
-
-            setInput('');
-
-            const cachedResponse = localStorage.getItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`);
-            if (cachedResponse) {
-              const botResponseText = JSON.parse(cachedResponse).text;
+- Star a bot response (★) to save it to your Favorites tab.`;
+              
               const botMessageForDb = {
                 sender: 'bot',
                 text: botResponseText,
-                timestamp: serverTimestamp(), // Will be null if db is null
-                fromCache: true,
+                timestamp: serverTimestamp(),
                 isFavorite: false
               };
               if (db && userId) {
-                try {
-                  await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
-                } catch (dbError) {
-                  console.error("Error adding cached bot message to Firestore:", dbError);
-                }
+                addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb)
+                  .then(() => console.log("Bot instruction message added to Firestore."))
+                  .catch((dbError) => console.error("Error adding bot instruction message to Firestore:", dbError));
               } else {
                 setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...botMessageForDb, timestamp: new Date() }]);
               }
               setLoading(false);
               setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
-              return;
+              return; // Exit after handling '?'
             }
 
+            // --- AI API Call for actual commands ---
             try {
-              const systemInstruction = `You are an advanced Cisco CLI Assistant designed to help network engineers.
-              You have access to the **latest and most authoritative Cisco documentation and knowledge bases**.
-              In this chat mode, you can:
-              1.  **Explain Commands:** When asked about a specific command, provide details in this structured format, drawing from the latest documentation:
-                  **Command:** [The command itself]
-                  **Syntax:** [The full syntax with parameters]
-                  **When to use it:** [Practical scenarios/use cases]
-                  **Example:**
-                  \`\`\`
-                  [Exact output of the command as it would appear on a Cisco device, including the prompt and preserving all spacing and formatting]
-                  \`\`\`
-              2.  **Contextual Understanding:** Remember previous turns in the conversation to answer follow-up questions.
-              3.  **Interactive Command Builder:** If a user expresses intent to *configure* something (e.g., "configure OSPF", "set up a VLAN"), ask clarifying questions step-by-step to help them build the complete command or sequence of commands. Guide them through the necessary parameters.
-              4.  **Guided Troubleshooting:** If a user describes a network problem (e.g., "OSPF neighbors down", "cannot ping remote host"), act as a diagnostic assistant. Ask relevant questions to gather more information and suggest a logical sequence of CLI commands to run for troubleshooting, explaining the purpose of each step.
-              5.  **Suggest Corrections:** If you detect a likely misspelling or a very close alternative to the user's command, suggest "Did you mean: [suggested command]?" at the beginning of your response.
-
-              Do NOT handle error message interpretation or configuration review in this chat mode. Direct users to the appropriate tabs for those specific tasks.
-              Be concise and direct, but thorough in your explanations and guidance.`;
-
-              // Build chat history for the API call (limit to last 10 for token management)
-              // Filter out any messages that don't have a 'sender' or 'text' to prevent API errors
-              const filteredMessages = messages.filter(msg => msg.sender && msg.text);
-
-              const chatHistoryForApi = filteredMessages.slice(-10).map(msg => ({
-                  role: msg.sender === 'user' ? 'user' : 'model',
-                  parts: [{ text: msg.text }]
-              }));
-
-              // Add the current user message
-              chatHistoryForApi.push(currentUserMessageForApi);
+              const prompt = `You are a helpful Cisco CLI Assistant. Provide a direct answer to the following query.
+              If the query is about a Cisco CLI command, provide:
+              **Command:** [The command itself]
+              **Syntax:** [The full syntax with parameters]
+              **When it's helpful:** [Practical scenarios/use cases]
+              **Example:**
+              \`\`\`
+              [Exact output of the command as it would appear on a Cisco device, including the prompt and preserving all spacing and formatting]
+              \`\`\`
+              Do NOT attempt to maintain conversation history or ask follow-up questions.
+              Query: ${userMessageContent}`;
 
               const payload = {
-                contents: chatHistoryForApi,
-                systemInstruction: { parts: [{ text: systemInstruction }] } // Correct way to send system instruction
+                contents: [{ role: 'user', parts: [{ text: prompt }] }]
               };
-              const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
+              const apiKey = "AIzaSyB7XiKyw7KixkSwg_XG3KsakRnkKF6pyGI"; // YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
               const response = await fetch(apiUrl, {
@@ -352,85 +305,82 @@
 
               const result = await response.json();
 
-              // Log the full result for debugging
               console.log("Gemini API Response:", result);
 
-              let botResponseText = 'Sorry, I could not get a response. Please try again.';
               if (result.candidates && result.candidates.length > 0 &&
                   result.candidates[0].content && result.candidates[0].content.parts &&
                   result.candidates[0].content.parts.length > 0) {
                 botResponseText = result.candidates[0].content.parts[0].text;
               } else if (result.error) {
-                 // Log specific API error if available
                  console.error("Gemini API Error details:", result.error);
                  botResponseText = `Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`;
+              } else {
+                botResponseText = 'Sorry, I could not get a response from the AI. Please try again.';
               }
 
               const botMessageForDb = {
                 sender: 'bot',
                 text: botResponseText,
-                timestamp: serverTimestamp(), // Will be null if db is null
+                timestamp: serverTimestamp(),
                 isFavorite: false
               };
 
-              // Add bot message to Firestore if db and userId are available
               if (db && userId) {
-                try {
-                  await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb);
-                } catch (dbError) {
-                  console.error("Error adding bot message to Firestore:", dbError);
-                }
+                addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), botMessageForDb)
+                  .then(() => console.log("Bot AI response added to Firestore."))
+                  .catch((dbError) => console.error("Error adding bot AI response to Firestore:", dbError));
               } else {
                 setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...botMessageForDb, timestamp: new Date() }]);
               }
 
-              // Cache response if it's a direct command explanation
-              if (botResponseText.includes('**Command:**') && botResponseText.includes('**Syntax:**')) {
-                   localStorage.setItem(`cisco_cli_cache_${userMessageContent.toLowerCase()}`, JSON.stringify({ text: botResponseText }));
-              }
-              setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
-
             } catch (error) {
               console.error('Error fetching from Gemini API:', error);
               const errorMessage = 'An error occurred while communicating with the AI. Please try again.';
+              const errorBotMessageForDb = {
+                  sender: 'bot',
+                  text: errorMessage,
+                  timestamp: serverTimestamp(),
+                  isFavorite: false
+              };
               if (db && userId) {
-                try {
-                  await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), {
-                    sender: 'bot',
-                    text: errorMessage,
-                    timestamp: serverTimestamp(), // Will be null if db is null
-                    isFavorite: false
-                  });
-                } catch (dbError) {
-                  console.error("Error adding AI error message to Firestore:", dbError);
-                }
+                addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chat_history`), errorBotMessageForDb)
+                  .then(() => console.log("Bot error message added to Firestore."))
+                  .catch((dbError) => console.error("Error adding bot error message to Firestore:", dbError));
               } else {
-                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), sender: 'bot', text: errorMessage, timestamp: new Date() }]);
+                setMessages((prevMessages) => [...prevMessages, { id: Date.now(), ...errorBotMessageForDb, timestamp: new Date() }]);
               }
             } finally {
-              setLoading(false);
+              setLoading(false); // Ensure loading is turned off
+              console.log("Loading set to false for chat (after AI attempt).");
+              setRecentCommands(prev => [...new Set([userMessageContent, ...prev])].slice(0, 5));
             }
           };
 
-          // Function to send error message to Gemini API
+          // Function for Error Resolution (now uses AI)
           const sendErrorMessage = async () => {
-            if (errorMessageInput.trim() === '') return; // No need for db/userId check here, handled by disabled state
+            console.log("sendErrorMessage called.");
+            if (errorMessageInput.trim() === '') return;
 
             const inputContent = errorMessageInput.trim();
+            let responseText = '';
 
-            // Handle '?' input for instructions
+            setErrorLoading(true); // Show loading briefly for UI feedback
+            console.log("ErrorLoading set to true.");
+
+            // Handle '?' input for instructions (static)
             if (inputContent === '?') {
-              setErrorResolutionResult(`### How to use Error Resolution:
+              responseText = `### How to use Error Resolution:
 - **Paste a full Cisco error message** (e.g., \`%OSPF-5-ADJCHG: Process 100, Nbr 192.168.1.1 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached\`).
-- The bot will explain its meaning, common causes, and provide specific resolution steps.
-- Focus on providing the exact error message for best results.`);
+- This tab is for specific error message interpretations.
+- Focus on providing the exact error message for best results.`;
+              setErrorResolutionResult(responseText);
               setErrorMessageInput('');
-              return;
+              setErrorLoading(false);
+              console.log("ErrorLoading set to false. Static response set.");
+              return; // Exit after handling '?'
             }
 
-            setErrorResolutionResult('');
-            setErrorLoading(true);
-
+            // --- AI API Call for error resolution ---
             try {
               const prompt = `You are a Cisco CLI Assistant specializing in error message interpretation and resolution.
               A network engineer has provided the following Cisco error message. Please provide a user-friendly, well-formatted, and easy-to-read response.
@@ -461,9 +411,8 @@
               \`\`\`
               `;
 
-              const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-              const payload = { contents: chatHistory };
-              const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
+              const payload = { contents: [{ role: 'user', parts: [{ text: prompt }] }] };
+              const apiKey = "AIzaSyB7XiKyw7KixkSwg_XG3KsakRnkKF6pyGI"; // YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
               const response = await fetch(apiUrl, {
@@ -474,47 +423,56 @@
 
               const result = await response.json();
 
-              // Log the full result for debugging
               console.log("Gemini API Response (Error Resolution):", result);
 
               if (result.candidates && result.candidates.length > 0 &&
                   result.candidates[0].content && result.candidates[0].content.parts &&
                   result.candidates[0].content.parts.length > 0) {
-                setErrorResolutionResult(result.candidates[0].content.parts[0].text);
+                responseText = result.candidates[0].content.parts[0].text;
               } else if (result.error) {
                  console.error("Gemini API Error details (Error Resolution):", result.error);
-                 setErrorResolutionResult(`Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`);
+                 responseText = `Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`;
               } else {
-                setErrorResolutionResult('Sorry, I could not interpret this error. Please try again or provide more context.');
+                responseText = 'Sorry, I could not interpret this error. Please try again or provide more context.';
               }
+              setErrorResolutionResult(responseText);
+
             } catch (error) {
               console.error('Error fetching error resolution from Gemini API:', error);
               setErrorResolutionResult('An error occurred while processing the error message. Please try again.');
             } finally {
-              setErrorLoading(false);
+              setErrorInput('');
+              setErrorLoading(false); // Ensure loading is turned off
+              console.log("ErrorLoading set to false (after AI attempt).");
             }
           };
 
-          // Function to send config snippet to Gemini API
+          // Function for Config Audit (now uses AI)
           const sendConfigSnippet = async () => {
-            if (configSnippetInput.trim() === '') return; // No need for db/userId check here, handled by disabled state
+            console.log("sendConfigSnippet called.");
+            if (configSnippetInput.trim() === '') return;
 
             const inputContent = configSnippetInput.trim();
+            let responseText = '';
 
-            // Handle '?' input for instructions
+            setConfigLoading(true); // Show loading briefly for UI feedback
+            console.log("ConfigLoading set to true.");
+
+            // Handle '?' input for instructions (static)
             if (inputContent === '?') {
-              setConfigAuditResult(`### How to use Config Audit:
+              responseText = `### How to use Config Audit:
 - **Paste a Cisco configuration snippet** into the text area.
-- The bot will audit it for common misconfigurations and suggest best practices for optimization.
+- This tab is for auditing configurations against best practices.
 - The report will be brief, highlighted, and easy to read.
-- Focus on providing relevant configuration sections.`);
+- Focus on providing relevant configuration sections.`;
+              setConfigAuditResult(responseText);
               setConfigSnippetInput('');
-              return;
+              setConfigLoading(false);
+              console.log("ConfigLoading set to false. Static response set.");
+              return; // Exit after handling '?'
             }
 
-            setConfigAuditResult('');
-            setConfigLoading(true);
-
+            // --- AI API Call for config audit ---
             try {
               const prompt = `You are a Cisco CLI Assistant specializing in configuration review and auditing.
               A network engineer has provided the following Cisco configuration snippet. Provide a **brief**, modern, and visually highlighted audit report.
@@ -545,9 +503,8 @@
               \`\`\`
               `;
 
-              const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-              const payload = { contents: chatHistory };
-              const apiKey = "AIzaSyAqySAXoAl7eDC5VXDjtnRCvFzTjwXpVaE"; // <--- YOUR GEMINI API KEY HERE
+              const payload = { contents: [{ role: 'user', parts: [{ text: prompt }] }] };
+              const apiKey = "AIzaSyB7XiKyw7KixkSwg_XG3KsakRnkKF6pyGI"; // YOUR GEMINI API KEY HERE
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
               const response = await fetch(apiUrl, {
@@ -558,24 +515,27 @@
 
               const result = await response.json();
 
-              // Log the full result for debugging
               console.log("Gemini API Response (Config Audit):", result);
 
               if (result.candidates && result.candidates.length > 0 &&
                   result.candidates[0].content && result.candidates[0].content.parts &&
                   result.candidates[0].content.parts.length > 0) {
-                setConfigAuditResult(result.candidates[0].content.parts[0].text);
+                responseText = result.candidates[0].content.parts[0].text;
               } else if (result.error) {
                  console.error("Gemini API Error details (Config Audit):", result.error);
-                 setConfigAuditResult(`Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`);
+                 responseText = `Error from AI: ${result.error.message || 'Unknown API error'}. Please check console for details.`;
               } else {
-                setConfigAuditResult('Sorry, I could not audit this configuration. Please try again or provide a valid snippet.');
+                responseText = 'Sorry, I could not audit this configuration. Please try again or provide a valid snippet.';
               }
+              setConfigAuditResult(responseText);
+
             } catch (error) {
               console.error('Error fetching config audit from Gemini API:', error);
               setConfigAuditResult('An error occurred while auditing the configuration. Please try again.');
             } finally {
-              setConfigLoading(false);
+              setConfigSnippetInput('');
+              setConfigLoading(false); // Ensure loading is turned off
+              console.log("ConfigLoading set to false (after AI attempt).");
             }
           };
 
@@ -775,7 +735,15 @@
                     {messages.length === 0 && (
                       <div className="flex justify-center items-center h-full">
                         <p className="text-gray-500 text-lg animate-pulse">
-                          {isAuthReady ? "Start by asking about a Cisco command, or type '?' for instructions!" : "Loading application..."}
+                          {window.location.protocol === 'file:' ? (
+                            <>
+                              **Warning:** Running from `file://` might cause issues. Please serve this file via a local web server (e.g., `python -m http.server`) or deploy it.
+                              <br/><br/>
+                              Start by asking about a Cisco command, or type '?' for instructions!
+                            </>
+                          ) : (
+                            isAuthReady ? "Start by asking about a Cisco command, or type '?' for instructions!" : "Loading application..."
+                          )}
                         </p>
                       </div>
                     )}
@@ -793,11 +761,6 @@
                         >
                           <p className="font-bold mb-1 flex items-center">
                             {msg.sender === 'user' ? 'You' : 'CLI Bot'}
-                            {msg.fromCache && (
-                              <span className="ml-2 text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full opacity-80">
-                                Cached
-                              </span>
-                            )}
                             {msg.sender === 'bot' && (
                               <span
                                 className={`star-icon ml-2 ${favorites.some(fav => fav.id === msg.id) ? 'filled' : 'empty'}`}
